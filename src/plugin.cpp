@@ -621,7 +621,7 @@ private:
             p.drawText(QRect(100,100,Width-200,500),Qt::AlignCenter|Qt::TextWordWrap,QStringLiteral("VIDEO · ")+QFileInfo(videoPath).fileName()+QStringLiteral("\nReproducción en la fuente de OBS"));
             p.drawImage(0,0,image);
         }
-        preview->setPixmap(QPixmap::fromImage(panelPreview.scaled(280,158,Qt::KeepAspectRatio,Qt::SmoothTransformation)));
+        preview->setPixmap(QPixmap::fromImage(panelPreview.scaled(240,90,Qt::KeepAspectRatio,Qt::SmoothTransformation)));
         obs_source_t *replacement=nullptr;
         bool replace=false;
         {std::lock_guard<std::mutex> lock(frameMutex); replace=desiredVideo!=sharedVideoPath;}

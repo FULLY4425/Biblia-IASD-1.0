@@ -31,7 +31,7 @@ $prefix = "$sdkRoot;$qtPrefix;$depsPrefix"
 Invoke-Checked cmake @('-S', $taskRoot, '-B', $pluginBuild, '-G', $taskGenerator, '-A', 'x64', "-DCMAKE_PREFIX_PATH=$prefix", '-DBUILD_TESTING=ON')
 Invoke-Checked cmake @('--build', $pluginBuild, '--config', 'Release', '--parallel', '4')
 
-$env:PATH = "$obsBuild/libobs/Release;$obsBuild/frontend/api/Release;$qtPrefix/bin;$depsPrefix/bin;$env:PATH"
+$env:PATH = "$obsBuild/libobs/Release;$obsBuild/frontend/api/Release;$obsBuild/deps/w32-pthreads/Release;$qtPrefix/bin;$depsPrefix/bin;$env:PATH"
 $env:QT_PLUGIN_PATH = "$qtPrefix/plugins"
 Invoke-Checked ctest @('--test-dir', $pluginBuild, '-C', 'Release', '--output-on-failure')
 Invoke-Checked python @("$taskRoot/tests/verify_data.py")
