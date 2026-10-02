@@ -4,6 +4,9 @@
 #include <graphics/vec4.h>
 #include <QApplication>
 #include <QStyle>
+#ifdef BIBLIA_TEST_ROOT
+#include <QTemporaryDir>
+#endif
 #include <QCompleter>
 #include <QStringListModel>
 #include <QDoubleSpinBox>
@@ -65,21 +68,34 @@ QString sharedVideoPath;
 
 QString dataPath(const char *relative)
 {
+#ifdef BIBLIA_TEST_ROOT
+    return QDir(QString::fromUtf8(BIBLIA_TEST_ROOT "/data")).filePath(QString::fromUtf8(relative));
+#else
     char *path = obs_module_file(relative);
     QString result = path ? QString::fromUtf8(path) : QString();
     bfree(path); return result;
+#endif
 }
 QString userPath()
 {
+#ifdef BIBLIA_TEST_ROOT
+    return {};
+#else
     char *path = obs_module_config_path("versions");
     QString result = path ? QString::fromUtf8(path) : QString();
     bfree(path); return result;
+#endif
 }
 
 QString configPath(const char *relative)
 {
+#ifdef BIBLIA_TEST_ROOT
+    static QTemporaryDir isolated;
+    return QDir(isolated.path()).filePath(QString::fromUtf8(relative));
+#else
     char *path=obs_module_config_path(relative);
     QString result=path?QString::fromUtf8(path):QString(); bfree(path); return result;
+#endif
 }
 
 class Panel final : public QWidget {
@@ -845,6 +861,22 @@ void collectionState(obs_data_t *data, bool saving, void *)
     }
 }
 }
+
+#ifdef BIBLIA_TEST_ROOT
+extern "C" bool obs_biblia_test_panel()
+{
+    Panel testPanel;auto settings=testPanel.save();
+    auto *tabs=testPanel.findChild<QTabWidget *>();if(!tabs || tabs->count()!=7)return false;
+    settings["background"]=6;settings["visible"]=true;settings["projectedText"]="Texto de prueba";settings["projectedReference"]="Juan 3:16";settings["projectedVersion"]="Prueba";
+    settings["showBand"]=false;settings["size"]=96;settings["fontScale"]=1.5;
+    auto alphaAtColumn=[](int column){std::lock_guard<std::mutex> lock(frameMutex);int maximum=0;for(int y=0;y<Height;++y)maximum=qMax(maximum,sharedFrame.pixelColor(column,y).alpha());return maximum;};
+    testPanel.restore(settings);if(alphaAtColumn(30)!=0 || testPanel.save()["size"].toInt()!=96 || testPanel.save()["fontScale"].toDouble()!=1.5)return false;
+    settings["showBand"]=true;testPanel.restore(settings);if(alphaAtColumn(30)==0)return false;
+    settings["presentation"]=1;settings["showBand"]=false;testPanel.restore(settings);if(alphaAtColumn(100)!=0)return false;
+    settings["showBand"]=true;testPanel.restore(settings);if(alphaAtColumn(100)==0)return false;
+    auto restored=testPanel.save();return restored["shortcuts"].toArray().size()==5 && restored["stripNotes"].toBool() && restored["stripNewlines"].toBool();
+}
+#endif
 
 bool obs_module_load(void)
 {
