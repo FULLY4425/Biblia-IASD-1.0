@@ -32,9 +32,9 @@ Invoke-Checked cmake @('-S', $taskRoot, '-B', $pluginBuild, '-G', $taskGenerator
 Invoke-Checked cmake @('--build', $pluginBuild, '--config', 'Release', '--parallel', '4')
 
 $env:PATH = "$qtPrefix/bin;$depsPrefix/bin;$env:PATH"
+$env:QT_PLUGIN_PATH = "$qtPrefix/plugins"
 Invoke-Checked ctest @('--test-dir', $pluginBuild, '-C', 'Release', '--output-on-failure')
 Invoke-Checked python @("$taskRoot/tests/verify_data.py")
 Invoke-Checked cmake @('--install', $pluginBuild, '--config', 'Release', '--prefix', $packageRoot)
 Copy-Item -LiteralPath "$taskRoot/LICENSE", "$taskRoot/README.md" -Destination $packageRoot
 Get-FileHash -LiteralPath "$packageRoot/obs-plugins/64bit/obs-biblia.dll" -Algorithm SHA256 | Format-List
-

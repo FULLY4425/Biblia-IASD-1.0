@@ -28,6 +28,7 @@
 #include <QVBoxLayout>
 #include <mutex>
 #include "bible.hpp"
+#include "text-fit.hpp"
 
 OBS_DECLARE_MODULE()
 OBS_MODULE_USE_DEFAULT_LOCALE("obs-biblia", "es-ES")
@@ -261,13 +262,9 @@ private:
             QFont font = fonts->currentFont(); font.setBold(bold->isChecked()); font.setItalic(italic->isChecked());
             const QRect area(130, 120, Width-260, Height-350);
             const int flags = Qt::AlignCenter | Qt::TextWordWrap;
-            int pixel = size->value(); QRect bounds;
-            do {
-                font.setPixelSize(pixel); painter.setFont(font);
-                bounds = painter.boundingRect(area, flags, current.text);
-                if (bounds.height() <= area.height() && bounds.width() <= area.width()) break;
-            } while (--pixel >= 18);
-            if (pixel < 18) { status->setText(QStringLiteral("El pasaje es demasiado largo. Proyecta un rango más corto.")); return false; }
+            const int pixel = fitPassage(painter, font, current.text, area.size(), size->value());
+            if (!pixel) { status->setText(QStringLiteral("El pasaje es demasiado largo. Proyecta un rango más corto.")); return false; }
+            font.setPixelSize(pixel); painter.setFont(font);
             painter.setPen(QColor(0,0,0,180)); painter.drawText(area.translated(3,3), flags, current.text);
             painter.setPen(color); painter.drawText(area, flags, current.text);
             font.setPixelSize(36); font.setBold(true); painter.setFont(font);
