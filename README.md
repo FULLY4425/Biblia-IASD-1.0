@@ -11,7 +11,7 @@ Plugin nativo en C++ y Qt 6. Registra una fuente llamada **Biblia** y un panel a
 - Atajos editables que funcionan cuando el panel tiene foco; limpiar el campo desactiva el atajo. Restauración de valores y ayudas opcionales.
 - Cero líneas desactiva la división. Letras a/b/c opcionales, limpieza de notas numéricas y saltos internos, y restablecimiento sin borrar Biblias.
 
-Las sugerencias de Google Fonts son una lista pequeña incluida sin conexión. Rachni/Acri son variantes nativas de color inspiradas en la guía. La implementación utiliza estilos Qt, no CSS de navegador. No incorpora licencias comerciales, cuentas ni destinos web. Quedan pendientes los iconos personalizados y un indicador independiente de versículo proyectado; la selección actual identifica el pasaje preparado.
+Las sugerencias de Google Fonts son una lista pequeña incluida sin conexión. Rachni/Acri son variantes nativas de color inspiradas en la guía. La implementación utiliza estilos Qt, no CSS de navegador. No incorpora licencias comerciales, cuentas ni destinos web. Se usan iconos del sistema; el indicador ● identifica los versículos proyectados y la selección identifica el pasaje preparado.
 
 ## Funciones implementadas en el código
 

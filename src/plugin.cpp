@@ -3,6 +3,7 @@
 #include <util/platform.h>
 #include <graphics/vec4.h>
 #include <QApplication>
+#include <QStyle>
 #include <QCompleter>
 #include <QStringListModel>
 #include <QDoubleSpinBox>
@@ -170,9 +171,10 @@ public:
         connect(verseList,&QListWidget::itemSelectionChanged,this,[this] {
             if (restoring || browsing) return;
             selectionDirty = true;
-            if (selectPassage() && autoProject->isChecked()) toggleCandidate();
+            selectPassage();
         });
-        connect(verseList,&QListWidget::itemDoubleClicked,this,[this](QListWidgetItem *) { if (selectPassage()) toggleCandidate(); });
+        connect(verseList,&QListWidget::itemClicked,this,[this](QListWidgetItem *) {if(autoProject->isChecked() && selectPassage())toggleCandidate();});
+        connect(verseList,&QListWidget::itemDoubleClicked,this,[this](QListWidgetItem *) { if (!autoProject->isChecked() && selectPassage()) toggleCandidate(); });
         auto *verseEnter=new QShortcut(QKeySequence(Qt::Key_Return),verseList);verseEnter->setContext(Qt::WidgetShortcut);
         connect(verseEnter,&QShortcut::activated,this,[this]{if(selectPassage())toggleCandidate();});
         connect(clear, &QPushButton::clicked, this, [this] { visible = false; render(); status->setText(QStringLiteral("Pasaje oculto.")); });
@@ -461,7 +463,7 @@ private:
     void setupModes(QTabWidget *tabs,QVBoxLayout *searchLayout,QFormLayout *form,QPushButton *lookup)
     {
         modeTabs=tabs;biblePage=tabs->widget(0);
-        auto *query=new QWidget;auto *queryLayout=new QVBoxLayout(query);searchLayout->removeItem(form);queryLayout->addLayout(form);searchLayout->removeWidget(lookup);queryLayout->addWidget(lookup);queryLayout->addStretch();
+        auto *query=new QWidget;auto *queryLayout=new QVBoxLayout(query);searchLayout->removeItem(form);form->setParent(nullptr);queryLayout->addLayout(form);searchLayout->removeWidget(lookup);queryLayout->addWidget(lookup);queryLayout->addStretch();
         auto *refresh=new QPushButton(QStringLiteral("Actualizar capítulo / ocultar salida"));auto *toggle=new QPushButton(QStringLiteral("Mostrar / ocultar"));auto *range=new QPushButton(QStringLiteral("Cambiar rango visible…"));auto *addChapter=new QPushButton(QStringLiteral("Añadir capítulo a lista"));
         searchLayout->insertWidget(0,refresh);searchLayout->insertWidget(1,toggle);searchLayout->insertWidget(2,range);searchLayout->insertWidget(3,addChapter);
         connect(refresh,&QPushButton::clicked,this,[this]{visible=false;render();find();});
@@ -484,6 +486,7 @@ private:
         auto *resetKeys=new QPushButton(QStringLiteral("Restablecer atajos"));layout->addRow(resetKeys);connect(resetKeys,&QPushButton::clicked,this,[this,defaults]{for(int n=0;n<defaults.size();++n)keyEditors[n]->setKeySequence(QKeySequence(defaults[n]));});
         auto *reset=new QPushButton(QStringLiteral("Restablecer ajustes, listas y temas…"));layout->addRow(reset);connect(reset,&QPushButton::clicked,this,[this,resetKeys]{if(QMessageBox::question(this,QStringLiteral("Restablecer"),QStringLiteral("¿Eliminar listas y temas personales y restablecer ajustes? Las Biblias se conservarán."))!=QMessageBox::Yes)return;auto oldThemes=themes,oldLists=lists;themes=QJsonArray();lists=QJsonArray();if(!saveLibrary()){themes=oldThemes;lists=oldLists;return;}while(themePicker->count()>4)themePicker->removeItem(4);listPicker->clear();refreshList();restore(QJsonObject());resetKeys->click();});
         auto *scroll=new QScrollArea;scroll->setWidgetResizable(true);scroll->setWidget(config);tabs->addTab(scroll,QStringLiteral("Configuración"));
+        for(int n=0;n<tabs->count();++n)tabs->setTabIcon(n,style()->standardIcon(n==0?QStyle::SP_FileDialogDetailedView:n==tabs->count()-1?QStyle::SP_FileDialogInfoView:QStyle::SP_FileIcon));
         auto changed=[this]{if(!restoring)render();};connect(fontScale,qOverload<double>(&QDoubleSpinBox::valueChanged),this,changed);for(auto *check:{stripNotes,stripNewlines,letterSuffix})connect(check,&QCheckBox::toggled,this,changed);
         connect(dockTheme,qOverload<int>(&QComboBox::currentIndexChanged),this,[this](int index){static const char *colors[]={"#292b34","#214334","#283f58"};setStyleSheet(QStringLiteral("QListWidget {background:#101116;color:white;} QListWidget::item {padding:10px 7px;} QListWidget::item:selected {background:%1;color:white;} QPushButton {padding:5px;}").arg(colors[qBound(0,index,2)]));});
     }
@@ -576,6 +579,7 @@ private:
         browsing=false; selectionDirty=false;
         for(int n=0;n<navigationButtons.size();++n){Passage adjacent;QString ignored;navigationButtons[n]->setEnabled(bibles[index].adjacent(candidate.reference,n<2?-1:1,n==0||n==3,adjacent,ignored));}
         passageTitle->setText(base+QStringLiteral(" · ")+bibles[index].name);
+        updateProjected();
         if(modeTabs && biblePage)modeTabs->setCurrentWidget(biblePage);
         status->setText(QStringLiteral("Pasaje encontrado. Pulsa Proyectar para mostrarlo.")); return true;
     }
@@ -634,8 +638,15 @@ private:
         }
         loadVersions(); versions->setCurrentIndex(versions->findData(bible.id)); status->setText(QStringLiteral("Versión importada: ") + bible.name);
     }
+    void updateProjected()
+    {
+        const QString base=current.reference.section(':',0,0),range=current.reference.section(':',1,1);
+        int first=range.isEmpty()?1:range.section('-',0,0).toInt();int last=range.contains('-')?range.section('-',1,1).toInt():(range.isEmpty()?201:first);
+        for(int row=0;row<verseList->count();++row){auto *item=verseList->item(row);auto ref=item->data(Qt::UserRole).toString();int number=ref.section(':',1,1).toInt();bool projected=visible && versions->currentText()==currentVersion && ref.section(':',0,0)==base && number>=first && number<=last;QString text=item->text();if(text.startsWith(QStringLiteral("● ")))text.remove(0,2);item->setText((projected?QStringLiteral("● "):QString())+text);item->setToolTip(projected?QStringLiteral("En proyección"):QStringLiteral("Preparado al seleccionar; Enter muestra / oculta"));}
+    }
     bool render()
     {
+        updateProjected();
         QImage image(Width, Height, QImage::Format_RGBA8888_Premultiplied); image.fill(Qt::transparent);
         if (visible && !current.text.isEmpty()) {
             if (backgrounds->currentIndex() == 4 && customImage.isNull()) {
@@ -698,11 +709,7 @@ private:
             const int frameHeight=bodyHeight+100;
             const int top=lower?Height-frameHeight-24:(Height-frameHeight)/2;
             frame.setGeometry(lower?24:94,top,lower?Width-48:Width-188,frameHeight);
-            if(showBand->isChecked()){
-                QColor body=bandColor; body.setAlpha(bandOpacity->value()*255/100);
-                painter.fillRect(frame.geometry(),body);
-                QColor header=bandColor.lighter(140); header.setAlpha(body.alpha()); painter.fillRect(QRect(frame.x(),top,frame.width(),60),header);
-            }
+            paintPassageBand(painter,frame.geometry(),bandColor,bandOpacity->value(),showBand->isChecked());
             verse.setGeometry(36,76,textWidth,bodyHeight);
             ref.setGeometry(36,0,850,60); version.setGeometry(946,0,frame.width()-982,60);
             verse.setText(slides[slideIndex]);

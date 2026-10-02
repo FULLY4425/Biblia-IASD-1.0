@@ -1,6 +1,15 @@
 #pragma once
 #include <QString>
 #include <QRegularExpression>
+#include <QPainter>
+inline void paintPassageBand(QPainter &painter,const QRect &rect,QColor color,int opacity,bool enabled)
+{
+    if(!enabled)return;
+    color.setAlpha(qBound(0,opacity,100)*255/100);
+    painter.fillRect(rect,color);
+    auto header=color.lighter(140);header.setAlpha(color.alpha());
+    painter.fillRect(QRect(rect.x(),rect.y(),rect.width(),60),header);
+}
 inline QString cleanPassage(QString text,bool joinLines,bool removeNotes)
 {
     if(removeNotes)text.remove(QRegularExpression(QStringLiteral("\\[\\d+\\]")));

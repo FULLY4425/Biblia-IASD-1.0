@@ -18,6 +18,11 @@ int main(int argc,char **argv)
     check(cleanPassage("1. Uno[1]\r\ncontinuación\r\n2. Dos[2]",true,true)==QStringLiteral("1. Uno continuación\n2. Dos"),"cleanup preserves verse boundaries");
     check(cleanPassage("Texto[1]\nsegundo",false,false)=="Texto[1]\nsegundo","cleanup can be disabled");
     check(slideLetter(0)=="a" && slideLetter(25)=="z" && slideLetter(26)=="aa","slide suffix extends beyond z");
+    QImage bandImage(200,160,QImage::Format_ARGB32_Premultiplied);bandImage.fill(Qt::transparent);
+    QPainter bandPainter(&bandImage);paintPassageBand(bandPainter,bandImage.rect(),QColor("#542966"),85,false);
+    check(bandImage.pixelColor(100,100).alpha()==0,"disabled band preserves transparent overlay");
+    paintPassageBand(bandPainter,bandImage.rect(),QColor("#542966"),85,true);bandPainter.end();
+    check(bandImage.pixelColor(100,100).alpha()==216 && bandImage.pixelColor(100,20)!=bandImage.pixelColor(100,100),"enabled purple band and header render");
     QFont font("Arial");font.setPixelSize(64);
     QString text=QStringLiteral("Porque de tal manera amó Dios al mundo, que ha dado a su Hijo unigénito, para que todo aquel que en él cree, no se pierda, mas tenga vida eterna. ").repeated(20);
     auto slides=passageSlides(text,font,800,3);
