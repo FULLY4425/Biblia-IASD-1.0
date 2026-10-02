@@ -1,0 +1,41 @@
+name: Compilar Biblia para OBS Windows
+
+on:
+  push:
+    branches: [main]
+    paths: ['src/**', 'tests/**', 'CMakeLists.txt', 'scripts/**', '.github/workflows/windows.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-2025
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Obtener OBS 32.2.2 con sus submódulos
+        uses: actions/checkout@v4
+        with:
+          repository: obsproject/obs-studio
+          ref: '32.2.2'
+          submodules: recursive
+          path: work-ci/obs-studio
+      - name: Compilar SDK, plugin y pruebas
+        shell: pwsh
+        run: ./scripts/build-windows.ps1
+      - name: Publicar DLL y datos
+        uses: actions/upload-artifact@v4
+        with:
+          name: obs-biblia-0.1.0-windows-x64
+          path: dist/
+          if-no-files-found: error
+          retention-days: 30
+      - name: Conservar resultados de las pruebas
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: resultados-pruebas
+          path: build/Testing/Temporary/LastTest.log
+          if-no-files-found: ignore
