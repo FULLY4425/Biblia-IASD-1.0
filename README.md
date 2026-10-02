@@ -16,13 +16,13 @@ Plugin nativo en C++ y Qt 6. Registra una fuente llamada **Biblia** y un panel a
 
 ## Estado real
 
-Este proyecto contiene código fuente, datos y pruebas. **Todavía no es un instalador ni una DLL compilada y no se ha probado cargándolo en OBS.** En este equipo se detectó OBS 32.2.2, pero no se encontró un entorno de compilación C++ con CMake y los paquetes de desarrollo de OBS/Qt.
+La DLL Windows x64 se compila con GitHub Actions contra OBS 32.2.2 y Qt 6.11.1. Se ha cargado en una copia portable de OBS 32.2.2 en Windows y se han probado la fuente, el panel, la búsqueda, los rangos, la apariencia, una imagen propia y la ocultación. Consulta `VALIDACION.md` para los resultados y los límites de las pruebas. El paquete ZIP contiene la DLL y los datos; la instalación es manual.
 
 Incluye los 66 libros de Reina-Valera 1909: 1.189 capítulos y 31.084 entradas de versículos según los archivos del proveedor BibleAquifer. Se conserva su numeración y texto, sin modernizar la ortografía. La procedencia y los hashes de los 66 archivos originales están en `data/bibles/provenance.txt`. También puedes importar otras versiones en el formato siguiente.
 
 ## Compilar en Windows x64
 
-Se necesitan Visual Studio 2022 con desarrollo C++, CMake 3.28 o posterior, Qt 6 (MSVC x64) y los paquetes de desarrollo `libobs` y `obs-frontend-api` compatibles con la instalación de OBS. El OBS instalado normalmente no incluye estos paquetes. Los binarios Qt deben coincidir con los que usa OBS; no copiar otra versión de Qt encima de OBS.
+Se necesitan Visual Studio 2022 o 2026 con desarrollo C++, CMake 3.28 o posterior, Qt 6 (MSVC x64) y los paquetes de desarrollo `libobs` y `obs-frontend-api` compatibles con la instalación de OBS. El flujo `.github/workflows/windows.yml` prepara el SDK y ejecuta las pruebas. El OBS instalado normalmente no incluye estos paquetes. Los binarios Qt deben coincidir con los que usa OBS; no copiar otra versión de Qt encima de OBS.
 
 Configurar `CMAKE_PREFIX_PATH` con las rutas de los paquetes de desarrollo, por ejemplo:
 
@@ -63,7 +63,7 @@ Capítulos y versículos son claves numéricas positivas en forma de cadenas. El
 
 Las imágenes propias se guardan como rutas: si las mueves, vuelve a seleccionarlas. Las versiones importadas permanecen en la carpeta de configuración de OBS. La ocultación deja la fuente transparente, incluido el fondo.
 
-## Verificación pendiente en OBS
+## Comprobaciones para otras instalaciones
 
 1. Compilar y ejecutar las pruebas C++.
 2. Cargar en OBS 32.2.2 y confirmar que aparecen el panel y la fuente.
