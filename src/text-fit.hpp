@@ -4,7 +4,7 @@
 inline int fitPassage(QPainter &painter, QFont font, const QString &text,
                       const QSize &area, int maximum)
 {
-    for (int pixel = maximum; pixel >= 18; --pixel) {
+    for (int pixel = maximum; pixel >= qMin(18, maximum) && pixel > 0; --pixel) {
         font.setPixelSize(pixel);
         painter.setFont(font);
         const auto bounds = painter.boundingRect(QRect(0, 0, area.width(), 1000000),

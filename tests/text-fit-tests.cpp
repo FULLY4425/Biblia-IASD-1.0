@@ -27,6 +27,7 @@ int main(int argc, char **argv)
     const int lowerSize=fitPassage(painter,font,verse.text,QSize(1800,168),64);
     if(lowerSize<18 || lowerSize>64) return 6;
     if(fitPassage(painter,font,chapter.text,QSize(1800,168),64)!=0) return 7;
+    if(fitPassage(painter,font,verse.text,area,12)!=12 || fitPassage(painter,font,verse.text,area,6)!=6)return 8;
     std::cout << "Verse size: " << shortSize << ", chapter size: " << chapterSize
               << ", measured chapter height: " << bounds.height() << "\n";
     return 0;

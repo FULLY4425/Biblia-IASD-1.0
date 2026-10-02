@@ -12,6 +12,9 @@ int main(int argc, char **argv)
     check(bible.lookup("gen 1:2-",passage,error) && passage.reference==QStringLiteral("Génesis 1:2-3") && passage.text=="2. Dos\n3. Tres","unique prefix and open range");
     check(bible.lookup("1 ju 2:1",passage,error) && passage.text=="Cuatro","numbered prefix");
     check(bible.bookNames().size()==2,"offline completion books");
+    Bible ambiguous;check(ambiguous.load(R"({"id":"a","name":"A","license":"CC0","books":{"Juan":{"1":{"1":"Uno"}},"Judas":{"1":{"1":"Dos"}}}})",error),"ambiguous fixture loads");
+    check(!ambiguous.lookup("ju 1:1",passage,error) && error.contains("ambigua"),"ambiguous prefixes rejected");
+    check(ambiguous.lookup("Juan 1:1",passage,error) && passage.text=="Uno","exact book resolves before prefixes");
     check(bible.lookup(QStringLiteral("genesis 1:1"), passage, error) && passage.text == "Uno", "accent insensitive lookup");
     check(bible.lookup(QStringLiteral("Génesis 1:1-3"), passage, error) && passage.text == "1. Uno\n2. Dos\n3. Tres", "inclusive range");
     check(bible.lookup("1 Juan 2:1", passage, error) && passage.text == "Cuatro", "numbered book");
