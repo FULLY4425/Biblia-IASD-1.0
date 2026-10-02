@@ -37,4 +37,19 @@ Invoke-Checked ctest @('--test-dir', $pluginBuild, '-C', 'Release', '--output-on
 Invoke-Checked python @("$taskRoot/tests/verify_data.py")
 Invoke-Checked cmake @('--install', $pluginBuild, '--config', 'Release', '--prefix', $packageRoot)
 Copy-Item -LiteralPath "$taskRoot/LICENSE", "$taskRoot/README.md" -Destination $packageRoot
+$generatorPackage = Join-Path $packageRoot 'generador'
+foreach ($taskLibrary in @('Qt6Core.dll','Qt6Gui.dll','Qt6Widgets.dll','Qt6Sql.dll')) {
+    Copy-Item -LiteralPath "$qtPrefix/bin/$taskLibrary" -Destination $generatorPackage
+}
+foreach ($taskPlugin in @('platforms/qwindows.dll','sqldrivers/qsqlite.dll','styles/qmodernwindowsstyle.dll')) {
+    if (Test-Path -LiteralPath "$qtPrefix/plugins/$taskPlugin") {
+        $taskDestination = Join-Path $generatorPackage (Split-Path -Parent $taskPlugin)
+        New-Item -ItemType Directory -Path $taskDestination -Force | Out-Null
+        Copy-Item -LiteralPath "$qtPrefix/plugins/$taskPlugin" -Destination $taskDestination
+    }
+}
+Copy-Item -Path "$depsPrefix/bin/*icu*.dll" -Destination $generatorPackage -ErrorAction SilentlyContinue
+$taskCompilerRuntime = & $vsLocator -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+$taskRuntimeFolder = Get-ChildItem -Path "$taskCompilerRuntime/VC/Redist/MSVC/*/x64/Microsoft.VC*.CRT" -Directory | Sort-Object FullName -Descending | Select-Object -First 1
+if ($taskRuntimeFolder) { Copy-Item -Path "$($taskRuntimeFolder.FullName)/*.dll" -Destination $generatorPackage }
 Get-FileHash -LiteralPath "$packageRoot/obs-plugins/64bit/obs-biblia.dll" -Algorithm SHA256 | Format-List

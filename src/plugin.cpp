@@ -34,6 +34,13 @@
 #include <mutex>
 #include "bible.hpp"
 #include "text-fit.hpp"
+#include "slides.hpp"
+#include "font-cache.hpp"
+#include <QInputDialog>
+#include <QJsonArray>
+#include <QScrollArea>
+#include <QFontMetrics>
+#include <QVariantAnimation>
 
 OBS_DECLARE_MODULE()
 OBS_MODULE_USE_DEFAULT_LOCALE("obs-biblia", "es-ES")
@@ -58,6 +65,12 @@ QString userPath()
     char *path = obs_module_config_path("versions");
     QString result = path ? QString::fromUtf8(path) : QString();
     bfree(path); return result;
+}
+
+QString configPath(const char *relative)
+{
+    char *path=obs_module_config_path(relative);
+    QString result=path?QString::fromUtf8(path):QString(); bfree(path); return result;
 }
 
 class Panel final : public QWidget {
@@ -186,7 +199,8 @@ public:
             if(!QFileInfo(path).isFile() || !QFileInfo(path).isReadable()) { status->setText(QStringLiteral("No se puede leer el video.")); return; }
             videoPath=path; videoLabel->setText(QFileInfo(path).fileName()); backgrounds->setCurrentIndex(5); render();
         });
-        loadVersions(); render();
+        setupExtensions(tabs, styleForm, searchLayout);
+        loadVersions(); loadLibrary(); loadCachedFonts(configPath("fonts")); render();
         status->setText(QStringLiteral("Agrega la fuente «Biblia» a tu escena y busca un pasaje."));
         auto *mediaStatus=new QTimer(this); mediaStatus->setInterval(1000);
         connect(mediaStatus,&QTimer::timeout,this,[this] {
@@ -202,7 +216,7 @@ public:
 
     QJsonObject save() const
     {
-        return {{"version", versions->currentData().toString()}, {"reference", reference->text()},
+        return {{"maxLines",maxLines->value()},{"paginate",paginate->isChecked()},{"layoutPolicy",layoutPolicy->currentIndex()},{"css",css->toPlainText()},{"slide",slideIndex},{"transition",transition->currentIndex()}, {"version", versions->currentData().toString()}, {"reference", reference->text()},
                 {"font", fonts->currentFont().family()}, {"size", size->value()}, {"bold", bold->isChecked()},
                 {"italic", italic->isChecked()}, {"color", color.name()}, {"background", backgrounds->currentIndex()},
                 {"image", imagePath}, {"video",videoPath}, {"presentation",presentation->currentIndex()},
@@ -238,10 +252,26 @@ public:
         imageLabel->setText(customImage.isNull() ? QStringLiteral("Sin imagen disponible") : QFileInfo(imagePath).fileName());
         current = {o.value("projectedReference").toString(), o.value("projectedText").toString()};
         currentVersion = o.value("projectedVersion").toString(); visible = o.value("visible").toBool(false);
+        paginate->setChecked(o.value("paginate").toBool(true)); maxLines->setValue(o.value("maxLines").toInt(3));
+        layoutPolicy->setCurrentIndex(qBound(0,o.value("layoutPolicy").toInt(0),2)); css->setPlainText(o.value("css").toString());
+        transition->setCurrentIndex(qBound(0,o.value("transition").toInt(0),1)); slideIndex=qMax(0,o.value("slide").toInt());
         restoring = false; verseList->clear(); selectionDirty=false; status->clear(); render();
     }
 private:
     QComboBox *versions, *backgrounds, *presentation;
+    QComboBox *layoutPolicy, *transition, *themePicker, *listPicker;
+    QCheckBox *paginate;
+    QSpinBox *maxLines;
+    QTextEdit *css;
+    QLabel *slideLabel;
+    QListWidget *savedPassages;
+    QJsonArray themes, lists;
+    int slideIndex=0, slideCount=1;
+    QNetworkAccessManager *network=nullptr;
+    QVariantAnimation *fade=nullptr;
+    QImage targetFrame, previousFrame;
+    bool libraryLoading=false;
+
     QLineEdit *reference;
     QFontComboBox *fonts;
     QSpinBox *size, *shade, *bandOpacity;
@@ -255,6 +285,165 @@ private:
     QColor bandColor = QColor("#542966");
     QImage customImage;
     bool visible = false, restoring = false, browsing=false, selectionDirty=false;
+
+    void setupExtensions(QTabWidget *tabs,QFormLayout *styleForm,QVBoxLayout *searchLayout)
+    {
+        paginate=new QCheckBox(QStringLiteral("Dividir automáticamente en diapositivas")); paginate->setChecked(true);
+        maxLines=new QSpinBox; maxLines->setRange(1,20); maxLines->setValue(3);
+        layoutPolicy=new QComboBox; layoutPolicy->addItems({QStringLiteral("Altura de cada diapositiva"),QStringLiteral("Altura de la más larga"),QStringLiteral("Todo el espacio disponible")});
+        transition=new QComboBox; transition->addItems({QStringLiteral("Sin transición"),QStringLiteral("Disolver · 250 ms")});
+        styleForm->addRow(paginate); styleForm->addRow(QStringLiteral("Máximo de líneas"),maxLines);
+        styleForm->addRow(QStringLiteral("Altura del recuadro"),layoutPolicy); styleForm->addRow(QStringLiteral("Transición"),transition);
+        auto *slideButtons=new QHBoxLayout; auto *previous=new QPushButton(QStringLiteral("‹ Diapositiva")); auto *next=new QPushButton(QStringLiteral("Diapositiva ›"));
+        slideLabel=new QLabel(QStringLiteral("Diapositiva 1 / 1")); slideButtons->addWidget(previous); slideButtons->addWidget(next);
+        searchLayout->addLayout(slideButtons); searchLayout->addWidget(slideLabel);
+        connect(previous,&QPushButton::clicked,this,[this]{if(slideIndex>0){--slideIndex;render();}});
+        connect(next,&QPushButton::clicked,this,[this]{if(slideIndex+1<slideCount){++slideIndex;render();}});
+        auto changed=[this]{if(!restoring){slideIndex=0;render();}};
+        connect(paginate,&QCheckBox::toggled,this,changed); connect(maxLines,qOverload<int>(&QSpinBox::valueChanged),this,changed);
+        connect(layoutPolicy,qOverload<int>(&QComboBox::currentIndexChanged),this,changed);
+        fade=new QVariantAnimation(this); fade->setStartValue(0.0); fade->setEndValue(1.0); fade->setDuration(250);
+        connect(fade,&QVariantAnimation::valueChanged,this,[this](const QVariant &value){
+            QImage frame(Width,Height,QImage::Format_RGBA8888_Premultiplied); frame.fill(Qt::transparent);
+            QPainter painter(&frame); painter.setOpacity(1.0-value.toDouble()); painter.drawImage(0,0,previousFrame);
+            painter.setCompositionMode(QPainter::CompositionMode_Plus); painter.setOpacity(value.toDouble()); painter.drawImage(0,0,targetFrame); painter.end();
+            std::lock_guard<std::mutex> lock(frameMutex); sharedFrame=frame; ++sharedRevision;
+        });
+        connect(fade,&QVariantAnimation::finished,this,[this]{std::lock_guard<std::mutex> lock(frameMutex);sharedFrame=targetFrame;++sharedRevision;});
+
+        auto *themeTab=new QWidget; auto *themeForm=new QFormLayout(themeTab);
+        themePicker=new QComboBox; themePicker->addItems({QStringLiteral("Clásico púrpura"),QStringLiteral("Noche azul"),QStringLiteral("Luz cálida"),QStringLiteral("Minimalista")});
+        auto *apply=new QPushButton(QStringLiteral("Aplicar tema")), *saveTheme=new QPushButton(QStringLiteral("Guardar como tema…"));
+        css=new QTextEdit; css->setAcceptRichText(false); css->setMaximumHeight(180);
+        css->setPlaceholderText(QStringLiteral("QLabel#verse { color: #fff; font-family: Georgia; }\nQLabel#reference { color: #ffd67a; }"));
+        auto *applyCss=new QPushButton(QStringLiteral("Aplicar estilos"));
+        themeForm->addRow(QStringLiteral("Tema"),themePicker); themeForm->addRow(apply); themeForm->addRow(saveTheme);
+        auto *cssHint=new QLabel(QStringLiteral("CSS nativo de Qt: selectores #frame, #verse, #reference y #version. Colores, fuentes, bordes, fondos y degradados. El diseño y las transiciones se controlan en Apariencia.")); cssHint->setWordWrap(true);
+        themeForm->addRow(cssHint); themeForm->addRow(QStringLiteral("Hoja de estilos Qt"),css); themeForm->addRow(applyCss);
+        connect(applyCss,&QPushButton::clicked,this,[this]{if(css->toPlainText().size()>32000){status->setText(QStringLiteral("Máximo 32 000 caracteres de estilos."));return;} slideIndex=0;render();});
+        connect(apply,&QPushButton::clicked,this,[this]{
+            const int index=themePicker->currentIndex(); auto settings=save();
+            if(index<4){
+                static const char *colors[]={"#542966","#173553","#594031","#202020"};
+                settings["bandColor"]=colors[index]; settings["bandOpacity"]=index==3?65:85;
+                settings["background"]=index==1?0:index==2?1:index==3?6:3;
+                settings["css"]=index==2?QStringLiteral("QLabel#reference { color:#ffdc91; } QLabel#verse { font-family:Georgia; }"):QString();
+            }else{
+                const auto style=themes[index-4].toObject().value("style").toObject();
+                for(auto it=style.begin();it!=style.end();++it)settings[it.key()]=it.value();
+            }
+            restore(settings); status->setText(QStringLiteral("Tema aplicado."));
+        });
+        connect(saveTheme,&QPushButton::clicked,this,[this]{
+            bool ok=false; auto name=QInputDialog::getText(this,QStringLiteral("Guardar tema"),QStringLiteral("Nombre"),QLineEdit::Normal,{},&ok).trimmed();
+            if(!ok||name.isEmpty())return;
+            if(themes.size()>=100){status->setText(QStringLiteral("Máximo 100 temas personales."));return;}
+            QJsonObject style; const auto settings=save();
+            for(const auto &key:styleKeys())style[key]=settings.value(key);
+            themes.append(QJsonObject{{"name",name.left(100)},{"style",style}});
+            if(saveLibrary()){themePicker->addItem(name.left(100));themePicker->setCurrentIndex(themePicker->count()-1);}
+            else themes.removeLast();
+        });
+        network=new QNetworkAccessManager(this);
+        auto *googleFamily=new QLineEdit; googleFamily->setPlaceholderText(QStringLiteral("Ejemplo: Lora"));
+        auto *googleButton=new QPushButton(QStringLiteral("Descargar Google Font (Internet)…"));
+        auto *fontButton=new QPushButton(QStringLiteral("Importar fuente TTF/OTF local…"));
+        themeForm->addRow(QStringLiteral("Google Fonts"),googleFamily); themeForm->addRow(googleButton); themeForm->addRow(fontButton);
+        connect(googleButton,&QPushButton::clicked,this,[this,googleFamily,googleButton]{
+            googleButton->setEnabled(false); status->setText(QStringLiteral("Descargando fuente…"));
+            downloadGoogleFont(network,googleFamily->text(),configPath("fonts"),[this,googleButton](QString family,QString error){
+                googleButton->setEnabled(true); if(!error.isEmpty()){status->setText(error);return;}
+                fonts->setCurrentFont(QFont(family));render();status->setText(QStringLiteral("Fuente guardada para uso sin conexión: ")+family);
+            });
+        });
+        connect(fontButton,&QPushButton::clicked,this,[this]{
+            auto path=QFileDialog::getOpenFileName(this,QStringLiteral("Importar tipografía"),{},QStringLiteral("Fuentes (*.ttf *.otf)")); if(path.isEmpty())return;
+            QFile file(path); if(file.size()>10*1024*1024||!file.open(QIODevice::ReadOnly)){status->setText(QStringLiteral("No se pudo abrir la fuente (máximo 10 MB)."));return;}
+            auto bytes=file.readAll(); int id=QFontDatabase::addApplicationFontFromData(bytes); auto families=QFontDatabase::applicationFontFamilies(id);
+            if(id<0||families.isEmpty()){status->setText(QStringLiteral("Fuente no compatible."));return;}
+            QDir().mkpath(configPath("fonts")); QSaveFile output(QDir(configPath("fonts")).filePath(QString::fromLatin1(QCryptographicHash::hash(bytes,QCryptographicHash::Sha256).toHex())+"."+QFileInfo(path).suffix().toLower()));
+            if(!output.open(QIODevice::WriteOnly)||output.write(bytes)!=bytes.size()||!output.commit()){status->setText(QStringLiteral("No se pudo guardar la fuente."));return;}
+            fonts->setCurrentFont(QFont(families.first())); render();
+        });
+        auto *themeScroll=new QScrollArea;themeScroll->setWidgetResizable(true);themeScroll->setWidget(themeTab);tabs->addTab(themeScroll,QStringLiteral("Temas"));
+        auto *appearance=tabs->widget(1);tabs->removeTab(1);auto *appearanceScroll=new QScrollArea;appearanceScroll->setWidgetResizable(true);appearanceScroll->setWidget(appearance);tabs->insertTab(1,appearanceScroll,QStringLiteral("Apariencia"));
+
+        auto *listTab=new QWidget;auto *listLayout=new QVBoxLayout(listTab);listPicker=new QComboBox;
+        auto *createList=new QPushButton(QStringLiteral("Nueva lista…"));auto *add=new QPushButton(QStringLiteral("Añadir el pasaje preparado"));
+        savedPassages=new QListWidget;auto *show=new QPushButton(QStringLiteral("Proyectar seleccionado"));
+        auto *remove=new QPushButton(QStringLiteral("Quitar seleccionado")); auto *up=new QPushButton(QStringLiteral("Subir")),*down=new QPushButton(QStringLiteral("Bajar"));
+        listLayout->addWidget(listPicker);listLayout->addWidget(createList);listLayout->addWidget(add);listLayout->addWidget(savedPassages,1);
+        auto *order=new QHBoxLayout;order->addWidget(up);order->addWidget(down);listLayout->addLayout(order);listLayout->addWidget(show);listLayout->addWidget(remove);
+        auto *listHint=new QLabel(QStringLiteral("Cada entrada guarda versión y referencia. Se consulta la Biblia local al proyectar. Las listas se conservan al cerrar OBS."));listHint->setWordWrap(true);listLayout->addWidget(listHint);
+        tabs->addTab(listTab,QStringLiteral("Listas"));
+        connect(listPicker,qOverload<int>(&QComboBox::currentIndexChanged),this,[this]{refreshList();});
+        connect(createList,&QPushButton::clicked,this,[this]{
+            bool ok=false;auto name=QInputDialog::getText(this,QStringLiteral("Nueva lista"),QStringLiteral("Nombre"),QLineEdit::Normal,{},&ok).trimmed();if(!ok||name.isEmpty())return;
+            if(lists.size()>=100){status->setText(QStringLiteral("Máximo 100 listas."));return;}
+            lists.append(QJsonObject{{"name",name.left(100)},{"entries",QJsonArray()}});
+            if(saveLibrary()){listPicker->addItem(name.left(100));listPicker->setCurrentIndex(listPicker->count()-1);}else lists.removeLast();
+        });
+        connect(add,&QPushButton::clicked,this,[this]{
+            if(listPicker->currentIndex()<0){status->setText(QStringLiteral("Crea una lista primero."));return;}
+            if(selectionDirty?!selectPassage():!find())return;
+            int index=listPicker->currentIndex();auto list=lists[index].toObject();auto entries=list["entries"].toArray();
+            if(entries.size()>=5000){status->setText(QStringLiteral("Máximo 5000 entradas por lista."));return;}
+            entries.append(QJsonObject{{"version",versions->currentData().toString()},{"reference",candidate.reference}});list["entries"]=entries;
+            auto old=lists[index];lists[index]=list;if(!saveLibrary())lists[index]=old;refreshList();
+        });
+        auto projectSaved=[this]{
+            int index=listPicker->currentIndex(),row=savedPassages->currentRow();if(index<0||row<0)return;
+            auto entry=lists[index].toObject()["entries"].toArray()[row].toObject();int version=versions->findData(entry["version"].toString());
+            if(version<0){status->setText(QStringLiteral("Importa la versión de esta entrada: ")+entry["version"].toString());return;}
+            versions->setCurrentIndex(version);reference->setText(entry["reference"].toString());selectionDirty=false;if(find())projectCandidate();
+        };
+        connect(show,&QPushButton::clicked,this,projectSaved);connect(savedPassages,&QListWidget::itemDoubleClicked,this,[projectSaved](QListWidgetItem*){projectSaved();});
+        connect(remove,&QPushButton::clicked,this,[this]{changeListEntry(0);});
+        connect(up,&QPushButton::clicked,this,[this]{changeListEntry(-1);});connect(down,&QPushButton::clicked,this,[this]{changeListEntry(1);});
+    }
+    QStringList styleKeys() const
+    {
+        return {"font","size","bold","italic","color","background","image","video","presentation","bandColor","bandOpacity","shade","maxLines","paginate","layoutPolicy","css","transition"};
+    }
+    bool saveLibrary()
+    {
+        const auto directory=configPath("library");QDir().mkpath(directory);
+        QSaveFile file(QDir(directory).filePath("library.json"));auto bytes=QJsonDocument(QJsonObject{{"themes",themes},{"lists",lists}}).toJson();
+        if(!file.open(QIODevice::WriteOnly)||file.write(bytes)!=bytes.size()||!file.commit()){status->setText(QStringLiteral("No se pudo guardar temas y listas."));return false;}return true;
+    }
+    void loadLibrary()
+    {
+        QFile file(QDir(configPath("library")).filePath("library.json"));if(!file.exists())return;
+        if(file.size()>8*1024*1024||!file.open(QIODevice::ReadOnly)){status->setText(QStringLiteral("No se pudo abrir la biblioteca local."));return;}
+        QJsonParseError error;auto doc=QJsonDocument::fromJson(file.readAll(),&error);
+        if(error.error!=QJsonParseError::NoError||!doc.isObject()){status->setText(QStringLiteral("Biblioteca local inválida."));return;}
+        const auto object=doc.object();
+        for(const auto &value:object["themes"].toArray()){
+            auto item=value.toObject();if(themes.size()>=100)break;if(item["name"].toString().isEmpty()||!item["style"].isObject())continue;
+            QJsonObject style;auto original=item["style"].toObject();for(const auto &key:styleKeys())if(original.contains(key))style[key]=original[key];
+            if(style["css"].toString().size()>32000)continue;item["style"]=style;themes.append(item);themePicker->addItem(item["name"].toString());
+        }
+        for(const auto &value:object["lists"].toArray()){
+            auto item=value.toObject();if(lists.size()>=100)break;if(item["name"].toString().isEmpty()||!item["entries"].isArray())continue;
+            QJsonArray entries;for(const auto &value:item["entries"].toArray()){auto entry=value.toObject();if(entries.size()>=5000)break;if(!entry["version"].toString().isEmpty()&&!entry["reference"].toString().isEmpty())entries.append(entry);}
+            item["entries"]=entries;lists.append(item);listPicker->addItem(item["name"].toString());
+        }
+        refreshList();
+    }
+    void refreshList()
+    {
+        savedPassages->clear();int index=listPicker->currentIndex();if(index<0||index>=lists.size())return;
+        for(const auto &value:lists[index].toObject()["entries"].toArray()){auto entry=value.toObject();savedPassages->addItem(entry["reference"].toString()+QStringLiteral(" · ")+entry["version"].toString());}
+    }
+    void changeListEntry(int direction)
+    {
+        int index=listPicker->currentIndex(),row=savedPassages->currentRow();if(index<0||row<0)return;
+        auto list=lists[index].toObject();auto entries=list["entries"].toArray();int next=row+direction;
+        if(direction==0)entries.removeAt(row);
+        else{if(next<0||next>=entries.size())return;auto value=entries[row];entries[row]=entries[next];entries[next]=value;}
+        list["entries"]=entries;auto old=lists[index];lists[index]=list;if(!saveLibrary())lists[index]=old;
+        refreshList();savedPassages->setCurrentRow(qMin(next,savedPassages->count()-1));
+    }
 
     void loadVersions()
     {
@@ -317,8 +506,9 @@ private:
     void projectCandidate()
     {
         const auto old=current; const auto oldVersion=currentVersion; const bool oldVisible=visible;
+        const int oldSlide=slideIndex; slideIndex=0;
         current=candidate; currentVersion=versions->currentText(); visible=true;
-        if(!render()){current=old; currentVersion=oldVersion; visible=oldVisible;}
+        if(!render()){current=old; currentVersion=oldVersion; visible=oldVisible; slideIndex=oldSlide;}
         else status->setText(QStringLiteral("Proyectando %1 · %2").arg(current.reference,currentVersion));
     }
     void navigate(int direction,bool wholeChapter)
@@ -372,28 +562,54 @@ private:
                 painter.drawEllipse(QPoint(1600,200), 500,500); painter.drawEllipse(QPoint(150,1000), 600,600);
             }
             if(backgrounds->currentIndex()!=6) painter.fillRect(image.rect(), QColor(0,0,0,shade->value()*255/100));
-            QFont font = fonts->currentFont(); font.setBold(bold->isChecked()); font.setItalic(italic->isChecked());
+            QFont font=fonts->currentFont(); font.setBold(bold->isChecked()); font.setItalic(italic->isChecked()); font.setPixelSize(size->value());
             const bool lower=presentation->currentIndex()==0;
-            const QRect area=lower?QRect(60,Height-218,Width-120,168):QRect(130,120,Width-260,Height-350);
-            const int flags=(lower?(Qt::AlignLeft|Qt::AlignVCenter):Qt::AlignCenter)|Qt::TextWordWrap;
-            const int pixel = fitPassage(painter, font, current.text, area.size(), size->value());
-            if (!pixel) { status->setText(QStringLiteral("El pasaje es demasiado largo. Proyecta un rango más corto.")); return false; }
-            if(lower){
-                QColor body=bandColor; body.setAlpha(bandOpacity->value()*255/100);
-                painter.fillRect(QRect(24,Height-300,Width-48,276),body);
-                QColor header=bandColor.lighter(140); header.setAlpha(bandOpacity->value()*255/100);
-                painter.fillRect(QRect(24,Height-300,Width-48,60),header);
+            QWidget frame; frame.setObjectName("frame"); frame.setAttribute(Qt::WA_TranslucentBackground); frame.setAttribute(Qt::WA_StyledBackground);
+            QLabel verse(&frame), ref(&frame), version(&frame);
+            verse.setObjectName("verse"); ref.setObjectName("reference"); version.setObjectName("version");
+            for(auto *label:{&verse,&ref,&version}) {label->setTextFormat(Qt::PlainText); label->setFont(font);}
+            verse.setWordWrap(false); verse.setAlignment(lower?Qt::AlignLeft|Qt::AlignVCenter:Qt::AlignCenter);
+            ref.setAlignment(Qt::AlignLeft|Qt::AlignVCenter); version.setAlignment(Qt::AlignRight|Qt::AlignVCenter);
+            QString base=QStringLiteral("QLabel { color:%1; background:transparent; padding:0; border:0; } QLabel#reference {font-size:36px; font-weight:bold;} QLabel#version {font-size:28px;}").arg(color.name());
+            frame.setStyleSheet(base+"\n"+css->toPlainText()); frame.ensurePolished(); verse.ensurePolished(); ref.ensurePolished(); version.ensurePolished();
+            font=verse.font();
+            const int textWidth=lower?Width-120:Width-260;
+            const int availableHeight=lower?Height-190:Height-350;
+            const int lineHeight=QFontMetrics(font).lineSpacing();
+            if(lineHeight>availableHeight){status->setText(QStringLiteral("La fuente del tema es demasiado grande para el espacio disponible."));return false;}
+            QStringList slides;
+            int pixel=font.pixelSize()>0?font.pixelSize():size->value();
+            if(paginate->isChecked()) {
+                int effectiveLines=qMin(maxLines->value(),qMax(1,availableHeight/qMax(1,lineHeight)));
+                slides=passageSlides(current.text,font,textWidth,effectiveLines);
+            } else {
+                const QSize area(textWidth,lower?168:Height-350);
+                pixel=fitPassage(painter,font,current.text,area,size->value());
+                if(!pixel){status->setText(QStringLiteral("Activa dividir en diapositivas o selecciona un pasaje más corto."));return false;}
+                font.setPixelSize(pixel); verse.setFont(font);
+                slides=passageSlides(current.text,font,textWidth,100000);
             }
-            font.setPixelSize(pixel); painter.setFont(font);
-            painter.setPen(QColor(0,0,0,180)); painter.drawText(area.translated(3,3), flags, current.text);
-            painter.setPen(color); painter.drawText(area, flags, current.text);
-            font.setPixelSize(36); font.setBold(true); painter.setFont(font);
-            if(lower){
-                painter.drawText(QRect(60,Height-300,850,60),Qt::AlignLeft|Qt::AlignVCenter,current.reference);
-                font.setPixelSize(28); painter.setFont(font);
-                painter.drawText(QRect(970,Height-300,Width-1030,60),Qt::AlignRight|Qt::AlignVCenter,
-                    painter.fontMetrics().elidedText(currentVersion,Qt::ElideRight,Width-1030));
-            }else painter.drawText(QRect(130, Height-185, Width-260, 100), flags, current.reference + " · " + currentVersion);
+            if(slides.isEmpty()){status->setText(QStringLiteral("No se pudo dividir el pasaje."));return false;}
+            slideCount=slides.size(); slideIndex=qBound(0,slideIndex,slideCount-1);
+            slideLabel->setText(QStringLiteral("Diapositiva %1 / %2").arg(slideIndex+1).arg(slideCount));
+            int lines=slides[slideIndex].count('\n')+1;
+            if(layoutPolicy->currentIndex()==1) for(const auto &slide:slides) lines=qMax(lines,int(slide.count('\n')+1));
+            const int bodyHeight=layoutPolicy->currentIndex()==2?availableHeight:qMin(availableHeight,lines*QFontMetrics(font).lineSpacing()+32);
+            const int frameHeight=bodyHeight+100;
+            const int top=lower?Height-frameHeight-24:(Height-frameHeight)/2;
+            frame.setGeometry(lower?24:94,top,lower?Width-48:Width-188,frameHeight);
+            if(lower || layoutPolicy->currentIndex()!=2){
+                QColor body=bandColor; body.setAlpha(bandOpacity->value()*255/100);
+                painter.fillRect(frame.geometry(),body);
+                QColor header=bandColor.lighter(140); header.setAlpha(body.alpha()); painter.fillRect(QRect(frame.x(),top,frame.width(),60),header);
+            }
+            verse.setGeometry(36,76,textWidth,bodyHeight);
+            ref.setGeometry(36,0,850,60); version.setGeometry(946,0,frame.width()-982,60);
+            verse.setText(slides[slideIndex]);
+            ref.setText(current.reference+(slideCount>1?QStringLiteral(" · %1/%2").arg(slideIndex+1).arg(slideCount):QString()));
+            version.setText(QFontMetrics(version.font()).elidedText(currentVersion,Qt::ElideRight,version.width()));
+            frame.render(&painter,QPoint(frame.x(),frame.y()),QRegion(),QWidget::DrawWindowBackground|QWidget::DrawChildren);
+
         }
         QImage panelPreview=image;
         const QString desiredVideo=visible && backgrounds->currentIndex()==5?videoPath:QString();
@@ -420,8 +636,11 @@ private:
         {
             std::lock_guard<std::mutex> lock(frameMutex);
             if(replace){previous=sharedMedia; sharedMedia=replacement; sharedVideoPath=desiredVideo;}
-            sharedFrame=image; ++sharedRevision;
+            if(fade->state()==QAbstractAnimation::Running) fade->stop();
+            previousFrame=sharedFrame; targetFrame=image;
+            if(transition->currentIndex()==0 || previousFrame.isNull()){sharedFrame=image; ++sharedRevision;}
         }
+        if(transition->currentIndex()==1 && !previousFrame.isNull()) fade->start();
         obs_source_release(previous); return true;
     }
 };
