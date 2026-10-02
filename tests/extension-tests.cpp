@@ -1,4 +1,5 @@
 #include "slides.hpp"
+#include "native-style.hpp"
 #include "openlp.hpp"
 #include "bible.hpp"
 #include <QApplication>
@@ -25,6 +26,9 @@ int main(int argc,char **argv)
     QString joined=unicode.join(QString());joined.remove('\n');
     check(joined==QString::fromUtf8("שלום 世界 😀 ").repeated(25),"RTL CJK and emoji preserved");
     QWidget frame;QLabel label(&frame);label.setObjectName("verse");label.setFont(font);
+    app.setStyleSheet("QLabel {font-size:13px;}");
+    frame.setStyleSheet(verseFontStyle(font,64));frame.ensurePolished();label.ensurePolished();
+    check(label.font().pixelSize()==64,"verse size overrides the host OBS stylesheet");
     frame.setStyleSheet("QLabel#verse {font-size:48px;color:#ffd67a;}");frame.ensurePolished();label.ensurePolished();
     check(label.font().pixelSize()==48,"native CSS font size applies to verse");
     check(label.palette().color(QPalette::WindowText)==QColor("#ffd67a"),"native CSS verse color applies");

@@ -36,6 +36,7 @@
 #include "text-fit.hpp"
 #include "slides.hpp"
 #include "font-cache.hpp"
+#include "native-style.hpp"
 #include <QInputDialog>
 #include <QJsonArray>
 #include <QScrollArea>
@@ -576,6 +577,7 @@ private:
             verse.setWordWrap(false); verse.setAlignment(lower?Qt::AlignLeft|Qt::AlignVCenter:Qt::AlignCenter);
             ref.setAlignment(Qt::AlignLeft|Qt::AlignVCenter); version.setAlignment(Qt::AlignRight|Qt::AlignVCenter);
             QString base=QStringLiteral("QLabel { color:%1; background:transparent; padding:0; border:0; } QLabel#reference {font-size:36px; font-weight:bold;} QLabel#version {font-size:28px;}").arg(color.name());
+            base+=verseFontStyle(font,size->value());
             frame.setStyleSheet(base+"\n"+css->toPlainText()); frame.ensurePolished(); verse.ensurePolished(); ref.ensurePolished(); version.ensurePolished();
             font=verse.font();
             const int textWidth=lower?Width-120:Width-260;
@@ -589,9 +591,10 @@ private:
                 slides=passageSlides(current.text,font,textWidth,effectiveLines);
             } else {
                 const QSize area(textWidth,lower?168:Height-350);
-                pixel=fitPassage(painter,font,current.text,area,size->value());
+                pixel=fitPassage(painter,font,current.text,area,pixel);
                 if(!pixel){status->setText(QStringLiteral("Activa dividir en diapositivas o selecciona un pasaje más corto."));return false;}
-                font.setPixelSize(pixel); verse.setFont(font);
+                frame.setStyleSheet(base+"\n"+css->toPlainText()+QStringLiteral("\nQLabel#verse {font-size:%1px;}").arg(pixel));
+                verse.ensurePolished();font=verse.font();
                 slides=passageSlides(current.text,font,textWidth,100000);
             }
             if(slides.isEmpty()){status->setText(QStringLiteral("No se pudo dividir el pasaje."));return false;}
