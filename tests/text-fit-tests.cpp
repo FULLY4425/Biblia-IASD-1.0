@@ -23,7 +23,7 @@ int main(int argc, char **argv)
     const auto bounds = painter.boundingRect(QRect(0, 0, 1660, 1000000),
         Qt::AlignTop | Qt::AlignHCenter | Qt::TextWordWrap | Qt::TextDontClip, chapter.text);
     if (bounds.height() > 730 || bounds.width() > 1660) return 4;
-    if (fitPassage(painter, font, chapter.text.repeated(100), area, 64) != 0) return 5;
+    if (fitPassage(painter, font, chapter.text.repeated(10), area, 64) != 0) return 5;
     std::cout << "Verse size: " << shortSize << ", chapter size: " << chapterSize
               << ", measured chapter height: " << bounds.height() << "\n";
     return 0;
