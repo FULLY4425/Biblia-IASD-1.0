@@ -742,6 +742,8 @@ bool obs_module_load(void)
     info.get_name = sourceName; info.create = createSource; info.destroy = destroySource;
     info.get_width = getWidth; info.get_height = getHeight; info.video_render = renderSource;
     info.video_tick=tickSource; info.enum_active_sources=enumerateMedia; info.enum_all_sources=enumerateMedia;
+    // Composite sources require this callback even when their video is muted.
+    info.audio_render=[](void *,uint64_t *,obs_source_audio_mix *,uint32_t,size_t,size_t){return false;};
     obs_register_source(&info);
     return true;
 }
