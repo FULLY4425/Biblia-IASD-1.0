@@ -683,6 +683,12 @@ void destroySource(void *data)
     obs_enter_graphics();
     gs_texture_destroy(source->texture); gs_texrender_destroy(source->mediaCanvas); obs_leave_graphics(); delete source;
 }
+void drawTexture(gs_texture_t *texture)
+{
+    if(!texture)return;
+    auto *effect=obs_get_base_effect(OBS_EFFECT_DEFAULT);
+    while(gs_effect_loop(effect,"Draw")) obs_source_draw(texture,0,0,Width,Height,false);
+}
 void renderSource(void *data, gs_effect_t *)
 {
     auto *source = static_cast<Source *>(data); QImage image; uint64_t revision;
@@ -711,13 +717,13 @@ void renderSource(void *data, gs_effect_t *)
                     gs_matrix_push(); gs_matrix_translate3f((Width-float(width)*scale)/2.0f,(Height-float(height)*scale)/2.0f,0.0f);
                     gs_matrix_scale3f(scale,scale,1.0f); obs_source_video_render(media); gs_matrix_pop();
                     gs_texrender_end(source->mediaCanvas);
-                    obs_source_draw(gs_texrender_get_texture(source->mediaCanvas),0,0,Width,Height,false);
+                    drawTexture(gs_texrender_get_texture(source->mediaCanvas));
                 }
             }
         }
         obs_source_release(media);
     }
-    if (source->texture) obs_source_draw(source->texture, 0, 0, Width, Height, false);
+    drawTexture(source->texture);
 }
 uint32_t getWidth(void *) { return Width; }
 uint32_t getHeight(void *) { return Height; }
