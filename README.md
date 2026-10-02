@@ -1,6 +1,6 @@
 # Biblia para OBS — versión 0.4.0
 
-Plugin nativo en C++ y Qt 6. Registra una fuente llamada **Biblia** y un panel acoplable con pestañas **Biblia**, **Apariencia**, **Fondos**, **Temas** y **Listas**. No utiliza navegador, HTML ni servicios de consulta en línea.
+Plugin nativo en C++ y Qt 6. Registra una fuente llamada **Biblia** y un panel acoplable con pestañas **Consulta**, **Biblia**, **Apariencia**, **Fondos**, **Temas**, **Listas** y **Configuración**. No utiliza navegador, HTML ni servicios de consulta en línea.
 
 ## Novedades 0.4.0
 
@@ -61,7 +61,7 @@ Cierra OBS. El árbol `dist` contiene `obs-plugins/64bit/obs-biblia.dll` y `data
 
 Abre OBS, habilita el panel **Biblia** en el menú **Paneles** y añade **Biblia** desde el botón `+` de Fuentes. Arrastra el título del panel al lado derecho de OBS para acoplarlo como en la referencia visual. Busca un pasaje y pulsa **Proyectar**. El capítulo aparece en la lista; puedes preparar un versículo con un clic y proyectarlo con el botón o con doble clic. Activa **Proyectar al seleccionar / navegar** si quieres cambiar la salida al seleccionar o usar las flechas. Por defecto, buscar y navegar solo prepara la selección.
 
-En **Apariencia** puedes escoger **Franja inferior** o **Texto centrado**, tipografía, color y opacidad de franja. Los cambios de apariencia actualizan lo que está al aire. Activa **Dividir automáticamente en diapositivas**, configura el máximo de líneas y utiliza los botones de diapositiva en Biblia. El ajuste de altura afecta al recuadro detrás del texto; las imágenes y los videos conservan su cobertura de pantalla. Si desactivas la división, el tamaño de letra se reduce para intentar encajar el pasaje.
+En **Apariencia** puedes escoger la posición **Franja inferior** o **Texto centrado**, activar o desactivar **Mostrar franja / recuadro de color**, y escoger tipografía, tamaño de letra, color y opacidad. Quitar la franja conserva el fondo de imagen o video. La escala adicional está en **Configuración**. Los cambios de apariencia actualizan lo que está al aire. Activa **Dividir automáticamente en diapositivas**, configura el máximo de líneas y utiliza los botones de diapositiva en Biblia. El ajuste de altura afecta al recuadro detrás del texto; las imágenes y los videos conservan su cobertura de pantalla. Si desactivas la división, el tamaño de letra se reduce para intentar encajar el pasaje.
 
 En **Fondos**, pulsa **Escoger video…** para cargar MP4, MOV, MKV, WEBM, AVI o M4V desde tu equipo. OBS lo reproduce automáticamente en bucle y sin sonido. No se sube el video a Internet. La miniatura del panel indica el archivo seleccionado; el movimiento se ve en la fuente y en la vista previa de OBS. La compatibilidad de los códecs depende del módulo multimedia de OBS; los errores de reproducción se muestran en el panel.
 
@@ -69,7 +69,7 @@ El fondo **Transparente** permite poner la franja sobre otras fuentes de la esce
 
 ## Temas, fuentes y listas
 
-En **Temas** selecciona un tema y pulsa **Aplicar tema**, o guarda la apariencia actual con un nombre. El editor usa [hojas de estilo de Qt](https://doc.qt.io/qt-6/stylesheet-reference.html), con sintaxis compatible con CSS para sus widgets: no implementa todo CSS de navegador, HTML, JavaScript ni animaciones CSS. Usa **Apariencia** para controlar el diseño, la altura y las transiciones. Ejemplo:
+En **Temas**, seleccionar un tema lo aplica automáticamente. Guarda una copia con **Guardar como tema…**, edita sus estilos y guarda con **Guardar cambios del tema** o Ctrl+S. Puedes renombrar y eliminar los temas personales. **Ayuda del editor** muestra los selectores y un ejemplo. El editor usa [hojas de estilo de Qt](https://doc.qt.io/qt-6/stylesheet-reference.html), con sintaxis compatible con CSS para sus widgets: no implementa todo CSS de navegador, HTML, JavaScript ni animaciones CSS. Usa **Apariencia** para controlar el diseño, la altura y las transiciones. Ejemplo:
 
 ```css
 QLabel#verse { color: #ffffff; font-family: Georgia; }
@@ -80,9 +80,9 @@ QWidget#frame { border: 2px solid #9575cd; border-radius: 14px; }
 
 El texto es plano. Tamaños extremos, bordes y rellenos personalizados pueden reducir el espacio útil: comprueba la salida al aplicar estilos. La paginación contempla el tamaño y la familia tipográfica resueltos por Qt. Los temas y listas se almacenan con escritura atómica en `library/library.json` dentro de la configuración del módulo; las fuentes importadas o descargadas se guardan en `fonts/` y se cargan sin Internet al iniciar.
 
-**Google Fonts** solo conecta al pulsar su botón de descarga; escribe el nombre de una familia (por ejemplo `Lora`). Solicita una fuente regular desde la [API de Google Fonts](https://developers.google.com/fonts/docs/getting_started) y la guarda localmente. Si el servicio devuelve un formato incompatible con Qt, el panel muestra el error y permite importar un TTF/OTF. La descarga necesita Internet; consultar Biblias, proyectar, usar temas, listas y fuentes ya guardadas no lo necesita.
+**Google Fonts** conecta al pulsar el botón de descarga o Enter en su campo; escribe el nombre de una familia (por ejemplo `Lora`). Solicita una fuente regular desde la [API de Google Fonts](https://developers.google.com/fonts/docs/getting_started) y la guarda localmente. Si el servicio devuelve un formato incompatible con Qt, el panel muestra el error y permite importar un TTF/OTF. La descarga necesita Internet; consultar Biblias, proyectar, usar temas, listas y fuentes ya guardadas no lo necesita.
 
-En **Listas**, crea una lista, prepara un pasaje en Biblia y pulsa **Añadir el pasaje preparado**. Puedes ordenar o quitar entradas y proyectarlas con doble clic. Cada entrada conserva versión y referencia; si falta esa Biblia, el panel solicita importarla. Límites: 100 listas y 5000 entradas por lista, 100 temas personales.
+En **Listas**, crea una lista, prepara un pasaje en Biblia y pulsa **Añadir el pasaje preparado**. Puedes ordenar con arrastre o con Subir/Bajar, quitar entradas o vaciar la lista con confirmación. Un clic prepara la entrada en Biblia; **Proyectar seleccionado** en Listas o **Proyectar** en Biblia la muestra. Cada entrada conserva versión y referencia; si falta esa Biblia, el panel solicita importarla. Límites: 100 listas y 5000 entradas por lista, 100 temas personales.
 
 ## Generador separado para OpenLP
 
