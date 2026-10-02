@@ -147,7 +147,7 @@ public:
         auto *videoHint = new QLabel(QStringLiteral("Videos locales MP4, MOV, MKV, WEBM o AVI. Se repiten en bucle, sin sonido. El video en movimiento se ve en la fuente de OBS."),backgroundTab);
         videoHint->setWordWrap(true); backgroundForm->addRow(videoHint);
         tabs->addTab(backgroundTab,QStringLiteral("Fondos"));
-        preview = new QLabel(this); preview->setMinimumSize(240, 135); preview->setAlignment(Qt::AlignCenter);
+        preview = new QLabel(this); preview->setMinimumSize(240, 90); preview->setAlignment(Qt::AlignCenter);
         layout->addWidget(preview);
         status = new QLabel(this); status->setWordWrap(true); layout->addWidget(status);
         connect(lookup, &QPushButton::clicked, this, [this] { find(); });
@@ -367,6 +367,8 @@ private:
         });
         auto *themeScroll=new QScrollArea;themeScroll->setWidgetResizable(true);themeScroll->setWidget(themeTab);tabs->addTab(themeScroll,QStringLiteral("Temas"));
         auto *appearance=tabs->widget(1);tabs->removeTab(1);auto *appearanceScroll=new QScrollArea;appearanceScroll->setWidgetResizable(true);appearanceScroll->setWidget(appearance);tabs->insertTab(1,appearanceScroll,QStringLiteral("Apariencia"));
+        auto *search=tabs->widget(0);tabs->removeTab(0);auto *searchScroll=new QScrollArea;searchScroll->setWidgetResizable(true);searchScroll->setWidget(search);tabs->insertTab(0,searchScroll,QStringLiteral("Biblia"));
+        tabs->setCurrentIndex(0);
 
         auto *listTab=new QWidget;auto *listLayout=new QVBoxLayout(listTab);listPicker=new QComboBox;
         auto *createList=new QPushButton(QStringLiteral("Nueva lista…"));auto *add=new QPushButton(QStringLiteral("Añadir el pasaje preparado"));
