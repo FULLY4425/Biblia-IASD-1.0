@@ -369,6 +369,7 @@ private:
         auto *applyCss=new QPushButton(QStringLiteral("Aplicar estilos"));
         themeForm->addRow(QStringLiteral("Tema"),themePicker); themeForm->addRow(apply); themeForm->addRow(saveTheme);
         auto *cssHint=new QLabel(QStringLiteral("CSS nativo de Qt: selectores #frame, #verse, #reference y #version. Colores, fuentes, bordes, fondos y degradados. El diseño y las transiciones se controlan en Apariencia.")); cssHint->setWordWrap(true);
+        auto *help=new QPushButton(QStringLiteral("Ayuda del editor"));themeForm->addRow(help);connect(help,&QPushButton::clicked,this,[this]{QMessageBox::information(this,QStringLiteral("Temas nativos"),QStringLiteral("Usa QLabel#verse para el pasaje, QLabel#reference para la cita, QLabel#version para la versión y QWidget#frame para el recuadro.\nEjemplo: QLabel#verse { color:#ffd67a; font-family:Georgia; }\nEl tamaño base se elige en Apariencia; el CSS puede sobrescribirlo. Guarda una copia para editar un tema incorporado. Ctrl+S guarda los cambios del tema personal.\nLa casilla Mostrar franja desactiva también el fondo del recuadro definido por CSS."));});
         themeForm->addRow(cssHint); themeForm->addRow(QStringLiteral("Hoja de estilos Qt"),css); themeForm->addRow(applyCss);
         connect(applyCss,&QPushButton::clicked,this,[this]{if(css->toPlainText().size()>32000){status->setText(QStringLiteral("Máximo 32 000 caracteres de estilos."));return;} slideIndex=0;render();});
         connect(themePicker,qOverload<int>(&QComboBox::activated),this,[apply](int){apply->click();});
@@ -403,6 +404,7 @@ private:
         googleFamily->setCompleter(new QCompleter(QStringList{"Lora","Roboto","Open Sans","Montserrat","Merriweather","Noto Sans","Noto Serif","Oswald","Raleway","Playfair Display"},googleFamily));
         connect(googleFamily,&QLineEdit::returnPressed,googleButton,&QPushButton::click);
         themeForm->addRow(QStringLiteral("Google Fonts"),googleFamily); themeForm->addRow(googleButton); themeForm->addRow(fontButton);
+        auto *removeGoogle=new QPushButton(QStringLiteral("Quitar fuente seleccionada / usar Arial"));themeForm->addRow(removeGoogle);connect(removeGoogle,&QPushButton::clicked,this,[this,googleFamily]{googleFamily->clear();fonts->setCurrentFont(QFont(QStringLiteral("Arial")));render();});
         connect(googleButton,&QPushButton::clicked,this,[this,googleFamily,googleButton]{
             googleButton->setEnabled(false); status->setText(QStringLiteral("Descargando fuente…"));
             downloadGoogleFont(network,googleFamily->text(),configPath("fonts"),[this,googleButton](QString family,QString error){
@@ -497,7 +499,7 @@ private:
         const QStringList names={QStringLiteral("Mostrar / ocultar"),QStringLiteral("Diapositiva anterior"),QStringLiteral("Diapositiva siguiente"),QStringLiteral("Capítulo anterior"),QStringLiteral("Capítulo siguiente")};
         shortcutHints=new QCheckBox(QStringLiteral("Mostrar ayudas de atajos"));shortcutHints->setChecked(true);layout->addRow(shortcutHints);
         const QStringList defaults={"Ctrl+Return","Alt+Left","Alt+Right","Ctrl+Left","Ctrl+Right"};
-        for(int n=0;n<names.size();++n){auto *key=new QKeySequenceEdit(QKeySequence(defaults[n]));auto *shortcut=new QShortcut(key->keySequence(),this);shortcut->setContext(Qt::WidgetWithChildrenShortcut);keyEditors.append(key);shortcuts.append(shortcut);layout->addRow(names[n],key);key->setToolTip(names[n]+": "+defaults[n]);connect(key,&QKeySequenceEdit::keySequenceChanged,shortcut,&QShortcut::setKey);connect(shortcut,&QShortcut::activated,this,[this,n]{if(n==0){if(visible){visible=false;render();}else if(selectionDirty?selectPassage():find())projectCandidate();}else if(n<3){int next=slideIndex+(n==1?-1:1);if(next>=0&&next<slideCount){slideIndex=next;render();}}else navigate(n==3?-1:1,true);});}
+        for(int n=0;n<names.size();++n){auto *key=new QKeySequenceEdit(QKeySequence(defaults[n]));key->setClearButtonEnabled(true);auto *shortcut=new QShortcut(key->keySequence(),this);shortcut->setContext(Qt::WidgetWithChildrenShortcut);keyEditors.append(key);shortcuts.append(shortcut);layout->addRow(names[n],key);key->setToolTip(names[n]+": "+defaults[n]);connect(key,&QKeySequenceEdit::keySequenceChanged,shortcut,&QShortcut::setKey);connect(shortcut,&QShortcut::activated,this,[this,n]{if(n==0){if(visible){visible=false;render();}else if(selectionDirty?selectPassage():find())projectCandidate();}else if(n<3){int next=slideIndex+(n==1?-1:1);if(next>=0&&next<slideCount){slideIndex=next;render();}}else navigate(n==3?-1:1,true);});}
         connect(shortcutHints,&QCheckBox::toggled,this,[this,names]{for(int n=0;n<keyEditors.size();++n)keyEditors[n]->setToolTip(shortcutHints->isChecked()?names[n]+": "+keyEditors[n]->keySequence().toString():QString());});
         auto *resetKeys=new QPushButton(QStringLiteral("Restablecer atajos"));layout->addRow(resetKeys);connect(resetKeys,&QPushButton::clicked,this,[this,defaults]{for(int n=0;n<defaults.size();++n)keyEditors[n]->setKeySequence(QKeySequence(defaults[n]));});
         auto *reset=new QPushButton(QStringLiteral("Restablecer ajustes, listas y temas…"));layout->addRow(reset);connect(reset,&QPushButton::clicked,this,[this,resetKeys]{if(QMessageBox::question(this,QStringLiteral("Restablecer"),QStringLiteral("¿Eliminar listas y temas personales y restablecer ajustes? Las Biblias se conservarán."))!=QMessageBox::Yes)return;auto oldThemes=themes,oldLists=lists;themes=QJsonArray();lists=QJsonArray();if(!saveLibrary()){themes=oldThemes;lists=oldLists;return;}while(themePicker->count()>4)themePicker->removeItem(4);listPicker->clear();refreshList();restore(QJsonObject());resetKeys->click();});
@@ -874,6 +876,7 @@ extern "C" bool obs_biblia_test_panel()
     settings["showBand"]=true;testPanel.restore(settings);if(alphaAtColumn(30)==0)return false;
     settings["presentation"]=1;settings["showBand"]=false;testPanel.restore(settings);if(alphaAtColumn(100)!=0)return false;
     settings["showBand"]=true;testPanel.restore(settings);if(alphaAtColumn(100)==0)return false;
+    auto editors=testPanel.findChildren<QKeySequenceEdit *>();if(editors.size()!=5)return false;for(auto *editor:editors)if(!editor->isClearButtonEnabled())return false;
     auto restored=testPanel.save();return restored["shortcuts"].toArray().size()==5 && restored["stripNotes"].toBool() && restored["stripNewlines"].toBool();
 }
 #endif
