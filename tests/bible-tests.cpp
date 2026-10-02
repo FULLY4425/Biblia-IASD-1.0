@@ -9,6 +9,9 @@ int main(int argc, char **argv)
     Bible bible; QString error; Passage passage; int failures = 0;
     auto check = [&](bool ok, const char *label) { if (!ok) { std::cerr << label << '\n'; ++failures; } };
     check(bible.load(data, error), "load valid data");
+    check(bible.lookup("gen 1:2-",passage,error) && passage.reference==QStringLiteral("Génesis 1:2-3") && passage.text=="2. Dos\n3. Tres","unique prefix and open range");
+    check(bible.lookup("1 ju 2:1",passage,error) && passage.text=="Cuatro","numbered prefix");
+    check(bible.bookNames().size()==2,"offline completion books");
     check(bible.lookup(QStringLiteral("genesis 1:1"), passage, error) && passage.text == "Uno", "accent insensitive lookup");
     check(bible.lookup(QStringLiteral("Génesis 1:1-3"), passage, error) && passage.text == "1. Uno\n2. Dos\n3. Tres", "inclusive range");
     check(bible.lookup("1 Juan 2:1", passage, error) && passage.text == "Cuatro", "numbered book");

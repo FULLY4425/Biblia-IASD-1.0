@@ -1,11 +1,22 @@
-# Biblia para OBS — versión 0.3.0
+# Biblia para OBS — versión 0.4.0
 
 Plugin nativo en C++ y Qt 6. Registra una fuente llamada **Biblia** y un panel acoplable con pestañas **Biblia**, **Apariencia**, **Fondos**, **Temas** y **Listas**. No utiliza navegador, HTML ni servicios de consulta en línea.
+
+## Novedades 0.4.0
+
+- Franja de color opcional, independiente del fondo y de la posición inferior/centrada. Tamaño de letra de 12 a 240 píxeles y escala de 0,5 a 2.
+- Consulta separada, sugerencias locales de libros, Biblia, Listas, Temas y Configuración; Apariencia y Fondos mantienen sus pestañas propias.
+- Listas por arrastre, clic para preparar y botón para proyectar; vaciado con confirmación y añadido del capítulo completo.
+- Temas al seleccionarlos, copias con Guardar como tema, edición, renombrado y borrado de temas personales; Ctrl+S guarda el tema personal en su editor.
+- Atajos editables que funcionan cuando el panel tiene foco; limpiar el campo desactiva el atajo. Restauración de valores y ayudas opcionales.
+- Cero líneas desactiva la división. Letras a/b/c opcionales, limpieza de notas numéricas y saltos internos, y restablecimiento sin borrar Biblias.
+
+Las sugerencias de Google Fonts son una lista pequeña incluida sin conexión. Rachni/Acri son variantes nativas de color inspiradas en la guía. La implementación utiliza estilos Qt, no CSS de navegador. No incorpora licencias comerciales, cuentas ni destinos web. Quedan pendientes los iconos personalizados y un indicador independiente de versículo proyectado; la selección actual identifica el pasaje preparado.
 
 ## Funciones implementadas en el código
 
 - Selección de versión y búsqueda por libro, capítulo, versículo o rango: `Juan 3:16`, `Juan 3:16-18`, `Salmos 23`.
-- Búsqueda sin distinguir mayúsculas ni acentos, con nombres completos de libros.
+- Búsqueda sin distinguir mayúsculas ni acentos, con nombres completos o prefijos únicos de libros y rangos abiertos (`Heb 11:39-`).
 - Lista del capítulo con el versículo seleccionado resaltado. Selección de rangos contiguos con Ctrl/Shift, doble clic para proyectar, botones de navegación de versículo y capítulo.
 - Botón **Proyectar**, botón **Ocultar pasaje** y modo opcional **Proyectar al seleccionar / navegar**.
 - Franja inferior inspirada en la referencia visual del usuario: referencia a la izquierda, versión a la derecha y texto debajo, con color y opacidad configurables. También conserva la proyección centrada.

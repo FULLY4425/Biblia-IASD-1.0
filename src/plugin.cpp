@@ -3,6 +3,13 @@
 #include <util/platform.h>
 #include <graphics/vec4.h>
 #include <QApplication>
+#include <QCompleter>
+#include <QStringListModel>
+#include <QDoubleSpinBox>
+#include <QKeySequenceEdit>
+#include <QShortcut>
+#include <QMessageBox>
+#include "presentation-options.hpp"
 #include <QCheckBox>
 #include <QColorDialog>
 #include <QComboBox>
@@ -98,7 +105,7 @@ public:
         auto *navigation = new QHBoxLayout;
         const QStringList labels = {QStringLiteral("« Cap."), QStringLiteral("‹ Vers."), QStringLiteral("Vers. ›"), QStringLiteral("Cap. »")};
         for (int n = 0; n < labels.size(); ++n) {
-            auto *button = new QPushButton(labels[n], search); navigation->addWidget(button);
+            auto *button = new QPushButton(labels[n], search); navigation->addWidget(button); navigationButtons.append(button);
             connect(button, &QPushButton::clicked, this, [this,n] { navigate(n < 2 ? -1 : 1, n == 0 || n == 3); });
         }
         searchLayout->addLayout(navigation);
@@ -119,9 +126,11 @@ public:
         auto *styleForm = new QFormLayout(appearance);
         presentation = new QComboBox(appearance);
         presentation->addItems({QStringLiteral("Franja inferior"),QStringLiteral("Texto centrado")});
-        styleForm->addRow(QStringLiteral("Diseño de proyección"), presentation);
+        styleForm->addRow(QStringLiteral("Posición del pasaje"), presentation);
+        showBand=new QCheckBox(QStringLiteral("Mostrar franja / recuadro de color"),appearance); showBand->setChecked(true);
+        styleForm->addRow(showBand);
         fonts = new QFontComboBox(appearance); fonts->setCurrentFont(QFont(QStringLiteral("Arial")));
-        size = new QSpinBox(appearance); size->setRange(24, 160); size->setValue(64);
+        size = new QSpinBox(appearance); size->setRange(12, 240); size->setValue(64);
         bold = new QCheckBox(QStringLiteral("Negrita"), appearance); bold->setChecked(true);
         italic = new QCheckBox(QStringLiteral("Cursiva"), appearance);
         auto *colorButton = new QPushButton(QStringLiteral("Color del texto…"), appearance);
@@ -161,9 +170,11 @@ public:
         connect(verseList,&QListWidget::itemSelectionChanged,this,[this] {
             if (restoring || browsing) return;
             selectionDirty = true;
-            if (selectPassage() && autoProject->isChecked()) projectCandidate();
+            if (selectPassage() && autoProject->isChecked()) toggleCandidate();
         });
-        connect(verseList,&QListWidget::itemDoubleClicked,this,[this](QListWidgetItem *) { if (selectPassage()) projectCandidate(); });
+        connect(verseList,&QListWidget::itemDoubleClicked,this,[this](QListWidgetItem *) { if (selectPassage()) toggleCandidate(); });
+        auto *verseEnter=new QShortcut(QKeySequence(Qt::Key_Return),verseList);verseEnter->setContext(Qt::WidgetShortcut);
+        connect(verseEnter,&QShortcut::activated,this,[this]{if(selectPassage())toggleCandidate();});
         connect(clear, &QPushButton::clicked, this, [this] { visible = false; render(); status->setText(QStringLiteral("Pasaje oculto.")); });
         connect(import, &QPushButton::clicked, this, [this] { importVersion(); });
         auto changed = [this] { if (!restoring) render(); };
@@ -174,9 +185,10 @@ public:
         connect(backgrounds, qOverload<int>(&QComboBox::currentIndexChanged), this, changed);
         connect(presentation, qOverload<int>(&QComboBox::currentIndexChanged), this, changed);
         connect(bandOpacity,qOverload<int>(&QSpinBox::valueChanged),this,changed);
+        connect(showBand,&QCheckBox::toggled,this,changed);
         connect(bandButton,&QPushButton::clicked,this,[this] { auto selected=QColorDialog::getColor(bandColor,this,QStringLiteral("Color de la franja")); if(selected.isValid()){ bandColor=selected; render(); } });
-        connect(versions, qOverload<int>(&QComboBox::currentIndexChanged), this, [this] { verseList->clear(); selectionDirty=false; });
-        connect(reference, &QLineEdit::textEdited, this, [this] { verseList->clear(); selectionDirty=false; });
+        connect(versions, qOverload<int>(&QComboBox::currentIndexChanged), this, [this] { verseList->clear(); selectionDirty=false; updateSuggestions(); });
+        connect(reference, &QLineEdit::textEdited, this, [this] { verseList->clear(); selectionDirty=false; updateSuggestions(); });
         connect(colorButton, &QPushButton::clicked, this, [this] {
             const QColor selected = QColorDialog::getColor(color, this, QStringLiteral("Color del texto"));
             if (selected.isValid()) { color = selected; render(); }
@@ -202,6 +214,7 @@ public:
             videoPath=path; videoLabel->setText(QFileInfo(path).fileName()); backgrounds->setCurrentIndex(5); render();
         });
         setupExtensions(tabs, styleForm, searchLayout);
+        setupModes(tabs,searchLayout,form,lookup);
         loadVersions(); loadLibrary(); loadCachedFonts(configPath("fonts")); render();
         status->setText(QStringLiteral("Agrega la fuente «Biblia» a tu escena y busca un pasaje."));
         auto *mediaStatus=new QTimer(this); mediaStatus->setInterval(1000);
@@ -218,7 +231,8 @@ public:
 
     QJsonObject save() const
     {
-        return {{"maxLines",maxLines->value()},{"paginate",paginate->isChecked()},{"layoutPolicy",layoutPolicy->currentIndex()},{"css",css->toPlainText()},{"slide",slideIndex},{"transition",transition->currentIndex()}, {"version", versions->currentData().toString()}, {"reference", reference->text()},
+        QJsonArray keys; for(auto *editor:keyEditors)keys.append(editor->keySequence().toString(QKeySequence::PortableText));
+        return {{"shortcutHints",shortcutHints->isChecked()},{"shortcuts",keys},{"dockTheme",dockTheme->currentIndex()},{"fontScale",fontScale->value()},{"stripNotes",stripNotes->isChecked()},{"stripNewlines",stripNewlines->isChecked()},{"letterSuffix",letterSuffix->isChecked()},{"showBand",showBand->isChecked()},{"maxLines",maxLines->value()},{"paginate",paginate->isChecked()},{"layoutPolicy",layoutPolicy->currentIndex()},{"css",css->toPlainText()},{"slide",slideIndex},{"transition",transition->currentIndex()}, {"version", versions->currentData().toString()}, {"reference", reference->text()},
                 {"font", fonts->currentFont().family()}, {"size", size->value()}, {"bold", bold->isChecked()},
                 {"italic", italic->isChecked()}, {"color", color.name()}, {"background", backgrounds->currentIndex()},
                 {"image", imagePath}, {"video",videoPath}, {"presentation",presentation->currentIndex()},
@@ -231,6 +245,12 @@ public:
         // Do not retain the previous collection's live passage if restoration fails.
         visible = false; render();
         restoring = true;
+        showBand->setChecked(o.value("showBand").toBool(true));
+        fontScale->setValue(o.value("fontScale").toDouble(1));
+        stripNotes->setChecked(o.value("stripNotes").toBool(true)); stripNewlines->setChecked(o.value("stripNewlines").toBool(true));
+        letterSuffix->setChecked(o.value("letterSuffix").toBool(false)); dockTheme->setCurrentIndex(qBound(0,o.value("dockTheme").toInt(),2));
+        shortcutHints->setChecked(o.value("shortcutHints").toBool(true));
+        auto keys=o.value("shortcuts").toArray(); for(int n=0;n<qMin(int(keys.size()),int(keyEditors.size()));++n)keyEditors[n]->setKeySequence(QKeySequence::fromString(keys[n].toString(),QKeySequence::PortableText));
         int index = versions->findData(o.value("version").toString()); versions->setCurrentIndex(index < 0 ? 0 : index);
         reference->setText(o.value("reference").toString(QStringLiteral("Juan 3:16")));
         fonts->setCurrentFont(QFont(o.value("font").toString(QStringLiteral("Arial"))));
@@ -277,7 +297,17 @@ private:
     QLineEdit *reference;
     QFontComboBox *fonts;
     QSpinBox *size, *shade, *bandOpacity;
-    QCheckBox *bold, *italic, *autoProject;
+    QCheckBox *bold, *italic, *autoProject, *showBand;
+    QCheckBox *stripNotes, *stripNewlines, *letterSuffix;
+    QDoubleSpinBox *fontScale;
+    QComboBox *dockTheme;
+    QVector<QKeySequenceEdit *> keyEditors;
+    QVector<QShortcut *> shortcuts;
+    QVector<QPushButton *> navigationButtons;
+    QCheckBox *shortcutHints;
+    QTabWidget *modeTabs=nullptr;
+    QWidget *biblePage=nullptr;
+    QCompleter *bookCompleter=nullptr;
     QListWidget *verseList;
     QLabel *preview, *status, *imageLabel, *videoLabel, *passageTitle;
     QVector<Bible> bibles;
@@ -291,7 +321,7 @@ private:
     void setupExtensions(QTabWidget *tabs,QFormLayout *styleForm,QVBoxLayout *searchLayout)
     {
         paginate=new QCheckBox(QStringLiteral("Dividir automáticamente en diapositivas")); paginate->setChecked(true);
-        maxLines=new QSpinBox; maxLines->setRange(1,20); maxLines->setValue(3);
+        maxLines=new QSpinBox; maxLines->setRange(0,40); maxLines->setSpecialValueText(QStringLiteral("Sin división")); maxLines->setValue(3);
         layoutPolicy=new QComboBox; layoutPolicy->addItems({QStringLiteral("Altura de cada diapositiva"),QStringLiteral("Altura de la más larga"),QStringLiteral("Todo el espacio disponible")});
         transition=new QComboBox; transition->addItems({QStringLiteral("Sin transición"),QStringLiteral("Disolver · 250 ms")});
         styleForm->addRow(paginate); styleForm->addRow(QStringLiteral("Máximo de líneas"),maxLines);
@@ -323,6 +353,7 @@ private:
         auto *cssHint=new QLabel(QStringLiteral("CSS nativo de Qt: selectores #frame, #verse, #reference y #version. Colores, fuentes, bordes, fondos y degradados. El diseño y las transiciones se controlan en Apariencia.")); cssHint->setWordWrap(true);
         themeForm->addRow(cssHint); themeForm->addRow(QStringLiteral("Hoja de estilos Qt"),css); themeForm->addRow(applyCss);
         connect(applyCss,&QPushButton::clicked,this,[this]{if(css->toPlainText().size()>32000){status->setText(QStringLiteral("Máximo 32 000 caracteres de estilos."));return;} slideIndex=0;render();});
+        connect(themePicker,qOverload<int>(&QComboBox::activated),this,[apply](int){apply->click();});
         connect(apply,&QPushButton::clicked,this,[this]{
             const int index=themePicker->currentIndex(); auto settings=save();
             if(index<4){
@@ -351,6 +382,8 @@ private:
         auto *googleFamily=new QLineEdit; googleFamily->setPlaceholderText(QStringLiteral("Ejemplo: Lora"));
         auto *googleButton=new QPushButton(QStringLiteral("Descargar Google Font (Internet)…"));
         auto *fontButton=new QPushButton(QStringLiteral("Importar fuente TTF/OTF local…"));
+        googleFamily->setCompleter(new QCompleter(QStringList{"Lora","Roboto","Open Sans","Montserrat","Merriweather","Noto Sans","Noto Serif","Oswald","Raleway","Playfair Display"},googleFamily));
+        connect(googleFamily,&QLineEdit::returnPressed,googleButton,&QPushButton::click);
         themeForm->addRow(QStringLiteral("Google Fonts"),googleFamily); themeForm->addRow(googleButton); themeForm->addRow(fontButton);
         connect(googleButton,&QPushButton::clicked,this,[this,googleFamily,googleButton]{
             googleButton->setEnabled(false); status->setText(QStringLiteral("Descargando fuente…"));
@@ -368,6 +401,15 @@ private:
             if(!output.open(QIODevice::WriteOnly)||output.write(bytes)!=bytes.size()||!output.commit()){status->setText(QStringLiteral("No se pudo guardar la fuente."));return;}
             fonts->setCurrentFont(QFont(families.first())); render();
         });
+        auto *editTheme=new QPushButton(QStringLiteral("Guardar cambios del tema"));
+        auto *deleteTheme=new QPushButton(QStringLiteral("Eliminar tema personal"));
+        themeForm->addRow(editTheme);themeForm->addRow(deleteTheme);
+        auto *renameTheme=new QPushButton(QStringLiteral("Renombrar tema personal…"));themeForm->addRow(renameTheme);connect(renameTheme,&QPushButton::clicked,this,[this]{int index=themePicker->currentIndex()-4;if(index<0||index>=themes.size())return;bool ok=false;auto name=QInputDialog::getText(this,QStringLiteral("Nombre del tema"),QStringLiteral("Nombre"),QLineEdit::Normal,themePicker->currentText(),&ok).trimmed();if(!ok||name.isEmpty())return;auto old=themes[index];auto item=old.toObject();item["name"]=name.left(100);themes[index]=item;if(saveLibrary())themePicker->setItemText(index+4,name.left(100));else themes[index]=old;});
+        auto updateTheme=[this]{int index=themePicker->currentIndex()-4;if(index<0||index>=themes.size()){status->setText(QStringLiteral("Guarda una copia del tema incorporado para editarlo."));return;}
+            if(css->toPlainText().size()>32000)return; auto old=themes[index];auto item=old.toObject();QJsonObject style;auto settings=save();for(const auto &key:styleKeys())style[key]=settings[key];item["style"]=style;themes[index]=item;if(!saveLibrary())themes[index]=old;else render();};
+        connect(editTheme,&QPushButton::clicked,this,updateTheme);
+        auto *saveShortcut=new QShortcut(QKeySequence::Save,themeTab);saveShortcut->setContext(Qt::WidgetWithChildrenShortcut);connect(saveShortcut,&QShortcut::activated,this,updateTheme);
+        connect(deleteTheme,&QPushButton::clicked,this,[this]{int index=themePicker->currentIndex()-4;if(index<0||index>=themes.size())return;auto old=themes;themes.removeAt(index);if(saveLibrary())themePicker->removeItem(index+4);else themes=old;});
         auto *themeScroll=new QScrollArea;themeScroll->setWidgetResizable(true);themeScroll->setWidget(themeTab);tabs->addTab(themeScroll,QStringLiteral("Temas"));
         auto *appearance=tabs->widget(1);tabs->removeTab(1);auto *appearanceScroll=new QScrollArea;appearanceScroll->setWidgetResizable(true);appearanceScroll->setWidget(appearance);tabs->insertTab(1,appearanceScroll,QStringLiteral("Apariencia"));
         auto *search=tabs->widget(0);tabs->removeTab(0);auto *searchScroll=new QScrollArea;searchScroll->setWidgetResizable(true);searchScroll->setWidget(search);tabs->insertTab(0,searchScroll,QStringLiteral("Biblia"));
@@ -379,6 +421,11 @@ private:
         auto *remove=new QPushButton(QStringLiteral("Quitar seleccionado")); auto *up=new QPushButton(QStringLiteral("Subir")),*down=new QPushButton(QStringLiteral("Bajar"));
         listLayout->addWidget(listPicker);listLayout->addWidget(createList);listLayout->addWidget(add);listLayout->addWidget(savedPassages,1);
         auto *order=new QHBoxLayout;order->addWidget(up);order->addWidget(down);listLayout->addLayout(order);listLayout->addWidget(show);listLayout->addWidget(remove);
+        auto *clearList=new QPushButton(QStringLiteral("Vaciar lista"));listLayout->addWidget(clearList);
+        connect(clearList,&QPushButton::clicked,this,[this]{int index=listPicker->currentIndex();if(index<0)return;if(QMessageBox::question(this,QStringLiteral("Vaciar lista"),QStringLiteral("¿Eliminar todas las entradas de esta lista?"))!=QMessageBox::Yes)return;auto old=lists[index];auto item=old.toObject();item["entries"]=QJsonArray();lists[index]=item;if(!saveLibrary())lists[index]=old;refreshList();});
+        savedPassages->setDragDropMode(QAbstractItemView::InternalMove);
+        connect(savedPassages->model(),&QAbstractItemModel::rowsMoved,this,[this]{int index=listPicker->currentIndex();if(index<0)return;QJsonArray entries;for(int row=0;row<savedPassages->count();++row)entries.append(savedPassages->item(row)->data(Qt::UserRole).toJsonObject());auto old=lists[index];auto list=old.toObject();list["entries"]=entries;lists[index]=list;if(!saveLibrary()){lists[index]=old;QTimer::singleShot(0,this,[this]{refreshList();});}});
+        connect(savedPassages,&QListWidget::itemClicked,this,[this](QListWidgetItem *item){auto entry=item->data(Qt::UserRole).toJsonObject();int version=versions->findData(entry["version"].toString());if(version<0){status->setText(QStringLiteral("Importa la Biblia de esta entrada."));return;}versions->setCurrentIndex(version);reference->setText(entry["reference"].toString());selectionDirty=false;find();});
         auto *listHint=new QLabel(QStringLiteral("Cada entrada guarda versión y referencia. Se consulta la Biblia local al proyectar. Las listas se conservan al cerrar OBS."));listHint->setWordWrap(true);listLayout->addWidget(listHint);
         tabs->addTab(listTab,QStringLiteral("Listas"));
         connect(listPicker,qOverload<int>(&QComboBox::currentIndexChanged),this,[this]{refreshList();});
@@ -406,9 +453,43 @@ private:
         connect(remove,&QPushButton::clicked,this,[this]{changeListEntry(0);});
         connect(up,&QPushButton::clicked,this,[this]{changeListEntry(-1);});connect(down,&QPushButton::clicked,this,[this]{changeListEntry(1);});
     }
+    void updateSuggestions()
+    {
+        if(!bookCompleter)return;int index=versions->currentIndex();if(index<0||index>=bibles.size())return;
+        bookCompleter->setModel(new QStringListModel(bibles[index].bookNames(),bookCompleter));
+    }
+    void setupModes(QTabWidget *tabs,QVBoxLayout *searchLayout,QFormLayout *form,QPushButton *lookup)
+    {
+        modeTabs=tabs;biblePage=tabs->widget(0);
+        auto *query=new QWidget;auto *queryLayout=new QVBoxLayout(query);searchLayout->removeItem(form);queryLayout->addLayout(form);searchLayout->removeWidget(lookup);queryLayout->addWidget(lookup);queryLayout->addStretch();
+        auto *refresh=new QPushButton(QStringLiteral("Actualizar capítulo / ocultar salida"));auto *toggle=new QPushButton(QStringLiteral("Mostrar / ocultar"));auto *range=new QPushButton(QStringLiteral("Cambiar rango visible…"));auto *addChapter=new QPushButton(QStringLiteral("Añadir capítulo a lista"));
+        searchLayout->insertWidget(0,refresh);searchLayout->insertWidget(1,toggle);searchLayout->insertWidget(2,range);searchLayout->insertWidget(3,addChapter);
+        connect(refresh,&QPushButton::clicked,this,[this]{visible=false;render();find();});
+        connect(toggle,&QPushButton::clicked,this,[this]{if(visible){visible=false;render();}else if(selectionDirty?selectPassage():find())projectCandidate();});
+        connect(range,&QPushButton::clicked,this,[this]{bool ok=false;auto text=QInputDialog::getText(this,QStringLiteral("Rango del capítulo"),QStringLiteral("Versículo o rango: 16, 16-18, 16-"),QLineEdit::Normal,{},&ok);if(!ok)return;QString base=candidate.reference.section(':',0,0);reference->setText(base+':'+text.trimmed());if(!find())return;const auto wanted=verseList->selectedItems();browsing=true;for(int row=verseList->count()-1;row>=0;--row)if(!wanted.contains(verseList->item(row)))delete verseList->takeItem(row);browsing=false;});
+        connect(addChapter,&QPushButton::clicked,this,[this]{int index=listPicker->currentIndex();if(index<0){status->setText(QStringLiteral("Crea una lista primero."));return;}int version=versions->currentIndex();if(version<0||version>=bibles.size())return;Passage chapter;QString error;if(!bibles[version].lookup(candidate.reference.section(':',0,0),chapter,error)){status->setText(error);return;}auto old=lists[index];auto item=old.toObject();auto entries=item["entries"].toArray();if(entries.size()>=5000)return;entries.append(QJsonObject{{"version",versions->currentData().toString()},{"reference",chapter.reference}});item["entries"]=entries;lists[index]=item;if(!saveLibrary())lists[index]=old;refreshList();});
+        tabs->insertTab(0,query,QStringLiteral("Consulta"));tabs->setTabPosition(QTabWidget::South);tabs->setCurrentWidget(query);
+        bookCompleter=new QCompleter(this);bookCompleter->setCaseSensitivity(Qt::CaseInsensitive);reference->setCompleter(bookCompleter);
+        auto *config=new QWidget;auto *layout=new QFormLayout(config);
+        dockTheme=new QComboBox;dockTheme->addItems({QStringLiteral("Oscuro"),QStringLiteral("Rachni (verde)"),QStringLiteral("Acri (azul)")});layout->addRow(QStringLiteral("Tema del panel"),dockTheme);
+        fontScale=new QDoubleSpinBox;fontScale->setRange(0.5,2);fontScale->setSingleStep(0.1);fontScale->setValue(1);layout->addRow(QStringLiteral("Escala de letra proyectada"),fontScale);
+        stripNotes=new QCheckBox(QStringLiteral("Quitar notas [1], [2]…"));stripNotes->setChecked(true);layout->addRow(stripNotes);
+        stripNewlines=new QCheckBox(QStringLiteral("Unir saltos dentro de cada versículo"));stripNewlines->setChecked(true);layout->addRow(stripNewlines);
+        letterSuffix=new QCheckBox(QStringLiteral("Identificar diapositivas con letras a, b, c…"));layout->addRow(letterSuffix);
+        const QStringList names={QStringLiteral("Mostrar / ocultar"),QStringLiteral("Diapositiva anterior"),QStringLiteral("Diapositiva siguiente"),QStringLiteral("Capítulo anterior"),QStringLiteral("Capítulo siguiente")};
+        shortcutHints=new QCheckBox(QStringLiteral("Mostrar ayudas de atajos"));shortcutHints->setChecked(true);layout->addRow(shortcutHints);
+        const QStringList defaults={"Ctrl+Return","Alt+Left","Alt+Right","Ctrl+Left","Ctrl+Right"};
+        for(int n=0;n<names.size();++n){auto *key=new QKeySequenceEdit(QKeySequence(defaults[n]));auto *shortcut=new QShortcut(key->keySequence(),this);shortcut->setContext(Qt::WidgetWithChildrenShortcut);keyEditors.append(key);shortcuts.append(shortcut);layout->addRow(names[n],key);key->setToolTip(names[n]+": "+defaults[n]);connect(key,&QKeySequenceEdit::keySequenceChanged,shortcut,&QShortcut::setKey);connect(shortcut,&QShortcut::activated,this,[this,n]{if(n==0){if(visible){visible=false;render();}else if(selectionDirty?selectPassage():find())projectCandidate();}else if(n<3){int next=slideIndex+(n==1?-1:1);if(next>=0&&next<slideCount){slideIndex=next;render();}}else navigate(n==3?-1:1,true);});}
+        connect(shortcutHints,&QCheckBox::toggled,this,[this,names]{for(int n=0;n<keyEditors.size();++n)keyEditors[n]->setToolTip(shortcutHints->isChecked()?names[n]+": "+keyEditors[n]->keySequence().toString():QString());});
+        auto *resetKeys=new QPushButton(QStringLiteral("Restablecer atajos"));layout->addRow(resetKeys);connect(resetKeys,&QPushButton::clicked,this,[this,defaults]{for(int n=0;n<defaults.size();++n)keyEditors[n]->setKeySequence(QKeySequence(defaults[n]));});
+        auto *reset=new QPushButton(QStringLiteral("Restablecer ajustes, listas y temas…"));layout->addRow(reset);connect(reset,&QPushButton::clicked,this,[this,resetKeys]{if(QMessageBox::question(this,QStringLiteral("Restablecer"),QStringLiteral("¿Eliminar listas y temas personales y restablecer ajustes? Las Biblias se conservarán."))!=QMessageBox::Yes)return;auto oldThemes=themes,oldLists=lists;themes=QJsonArray();lists=QJsonArray();if(!saveLibrary()){themes=oldThemes;lists=oldLists;return;}while(themePicker->count()>4)themePicker->removeItem(4);listPicker->clear();refreshList();restore(QJsonObject());resetKeys->click();});
+        auto *scroll=new QScrollArea;scroll->setWidgetResizable(true);scroll->setWidget(config);tabs->addTab(scroll,QStringLiteral("Configuración"));
+        auto changed=[this]{if(!restoring)render();};connect(fontScale,qOverload<double>(&QDoubleSpinBox::valueChanged),this,changed);for(auto *check:{stripNotes,stripNewlines,letterSuffix})connect(check,&QCheckBox::toggled,this,changed);
+        connect(dockTheme,qOverload<int>(&QComboBox::currentIndexChanged),this,[this](int index){static const char *colors[]={"#292b34","#214334","#283f58"};setStyleSheet(QStringLiteral("QListWidget {background:#101116;color:white;} QListWidget::item {padding:10px 7px;} QListWidget::item:selected {background:%1;color:white;} QPushButton {padding:5px;}").arg(colors[qBound(0,index,2)]));});
+    }
     QStringList styleKeys() const
     {
-        return {"font","size","bold","italic","color","background","image","video","presentation","bandColor","bandOpacity","shade","maxLines","paginate","layoutPolicy","css","transition"};
+        return {"showBand","fontScale","font","size","bold","italic","color","background","image","video","presentation","bandColor","bandOpacity","shade","maxLines","paginate","layoutPolicy","css","transition"};
     }
     bool saveLibrary()
     {
@@ -439,7 +520,7 @@ private:
     void refreshList()
     {
         savedPassages->clear();int index=listPicker->currentIndex();if(index<0||index>=lists.size())return;
-        for(const auto &value:lists[index].toObject()["entries"].toArray()){auto entry=value.toObject();savedPassages->addItem(entry["reference"].toString()+QStringLiteral(" · ")+entry["version"].toString());}
+        for(const auto &value:lists[index].toObject()["entries"].toArray()){auto entry=value.toObject();auto *item=new QListWidgetItem(entry["reference"].toString()+QStringLiteral(" · ")+entry["version"].toString(),savedPassages);item->setData(Qt::UserRole,entry);}
     }
     void changeListEntry(int direction)
     {
@@ -467,6 +548,7 @@ private:
             }
         }
         int index = versions->findData(previous); if (index >= 0) versions->setCurrentIndex(index);
+        updateSuggestions();
     }
     bool find()
     {
@@ -490,8 +572,11 @@ private:
             if(number>=first && number<=last){ item->setSelected(true); if(!firstItem) firstItem=item; }
         }
         if(firstItem) verseList->scrollToItem(firstItem,QAbstractItemView::PositionAtCenter);
+        if(firstItem)verseList->setCurrentItem(firstItem,QItemSelectionModel::NoUpdate);
         browsing=false; selectionDirty=false;
+        for(int n=0;n<navigationButtons.size();++n){Passage adjacent;QString ignored;navigationButtons[n]->setEnabled(bibles[index].adjacent(candidate.reference,n<2?-1:1,n==0||n==3,adjacent,ignored));}
         passageTitle->setText(base+QStringLiteral(" · ")+bibles[index].name);
+        if(modeTabs && biblePage)modeTabs->setCurrentWidget(biblePage);
         status->setText(QStringLiteral("Pasaje encontrado. Pulsa Proyectar para mostrarlo.")); return true;
     }
     bool selectPassage()
@@ -508,6 +593,11 @@ private:
         if(index<0 || index>=bibles.size() || !bibles[index].lookup(ref,candidate,error)){ status->setText(error); return false; }
         reference->setText(candidate.reference);
         status->setText(QStringLiteral("Seleccionado %1. Pulsa Proyectar o haz doble clic.").arg(candidate.reference)); return true;
+    }
+    void toggleCandidate()
+    {
+        if(visible && candidate.reference==current.reference && versions->currentText()==currentVersion){visible=false;render();}
+        else projectCandidate();
     }
     void projectCandidate()
     {
@@ -568,7 +658,7 @@ private:
                 painter.drawEllipse(QPoint(1600,200), 500,500); painter.drawEllipse(QPoint(150,1000), 600,600);
             }
             if(backgrounds->currentIndex()!=6) painter.fillRect(image.rect(), QColor(0,0,0,shade->value()*255/100));
-            QFont font=fonts->currentFont(); font.setBold(bold->isChecked()); font.setItalic(italic->isChecked()); font.setPixelSize(size->value());
+            QFont font=fonts->currentFont(); font.setBold(bold->isChecked()); font.setItalic(italic->isChecked()); font.setPixelSize(qRound(size->value()*fontScale->value()));
             const bool lower=presentation->currentIndex()==0;
             QWidget frame; frame.setObjectName("frame"); frame.setAttribute(Qt::WA_TranslucentBackground); frame.setAttribute(Qt::WA_StyledBackground);
             QLabel verse(&frame), ref(&frame), version(&frame);
@@ -577,8 +667,9 @@ private:
             verse.setWordWrap(false); verse.setAlignment(lower?Qt::AlignLeft|Qt::AlignVCenter:Qt::AlignCenter);
             ref.setAlignment(Qt::AlignLeft|Qt::AlignVCenter); version.setAlignment(Qt::AlignRight|Qt::AlignVCenter);
             QString base=QStringLiteral("QLabel { color:%1; background:transparent; padding:0; border:0; } QLabel#reference {font-size:36px; font-weight:bold;} QLabel#version {font-size:28px;}").arg(color.name());
-            base+=verseFontStyle(font,size->value());
-            frame.setStyleSheet(base+"\n"+css->toPlainText()); frame.ensurePolished(); verse.ensurePolished(); ref.ensurePolished(); version.ensurePolished();
+            base+=verseFontStyle(font,font.pixelSize());
+            const QString frameOverride=showBand->isChecked()?QString():QStringLiteral("\nQWidget#frame {background:transparent; border:0;}");
+            frame.setStyleSheet(base+"\n"+css->toPlainText()+frameOverride); frame.ensurePolished(); verse.ensurePolished(); ref.ensurePolished(); version.ensurePolished();
             font=verse.font();
             const int textWidth=lower?Width-120:Width-260;
             const int availableHeight=lower?Height-190:Height-350;
@@ -586,16 +677,17 @@ private:
             if(lineHeight>availableHeight){status->setText(QStringLiteral("La fuente del tema es demasiado grande para el espacio disponible."));return false;}
             QStringList slides;
             int pixel=font.pixelSize()>0?font.pixelSize():size->value();
-            if(paginate->isChecked()) {
+            const QString displayText=cleanPassage(current.text,stripNewlines->isChecked(),stripNotes->isChecked());
+            if(paginate->isChecked() && maxLines->value()>0) {
                 int effectiveLines=qMin(maxLines->value(),qMax(1,availableHeight/qMax(1,lineHeight)));
-                slides=passageSlides(current.text,font,textWidth,effectiveLines);
+                slides=passageSlides(displayText,font,textWidth,effectiveLines);
             } else {
                 const QSize area(textWidth,lower?168:Height-350);
-                pixel=fitPassage(painter,font,current.text,area,pixel);
+                pixel=fitPassage(painter,font,displayText,area,pixel);
                 if(!pixel){status->setText(QStringLiteral("Activa dividir en diapositivas o selecciona un pasaje más corto."));return false;}
-                frame.setStyleSheet(base+"\n"+css->toPlainText()+QStringLiteral("\nQLabel#verse {font-size:%1px;}").arg(pixel));
+                frame.setStyleSheet(base+"\n"+css->toPlainText()+frameOverride+QStringLiteral("\nQLabel#verse {font-size:%1px;}").arg(pixel));
                 verse.ensurePolished();font=verse.font();
-                slides=passageSlides(current.text,font,textWidth,100000);
+                slides=passageSlides(displayText,font,textWidth,100000);
             }
             if(slides.isEmpty()){status->setText(QStringLiteral("No se pudo dividir el pasaje."));return false;}
             slideCount=slides.size(); slideIndex=qBound(0,slideIndex,slideCount-1);
@@ -606,7 +698,7 @@ private:
             const int frameHeight=bodyHeight+100;
             const int top=lower?Height-frameHeight-24:(Height-frameHeight)/2;
             frame.setGeometry(lower?24:94,top,lower?Width-48:Width-188,frameHeight);
-            if(lower || layoutPolicy->currentIndex()!=2){
+            if(showBand->isChecked()){
                 QColor body=bandColor; body.setAlpha(bandOpacity->value()*255/100);
                 painter.fillRect(frame.geometry(),body);
                 QColor header=bandColor.lighter(140); header.setAlpha(body.alpha()); painter.fillRect(QRect(frame.x(),top,frame.width(),60),header);
@@ -614,7 +706,7 @@ private:
             verse.setGeometry(36,76,textWidth,bodyHeight);
             ref.setGeometry(36,0,850,60); version.setGeometry(946,0,frame.width()-982,60);
             verse.setText(slides[slideIndex]);
-            ref.setText(current.reference+(slideCount>1?QStringLiteral(" · %1/%2").arg(slideIndex+1).arg(slideCount):QString()));
+            ref.setText(current.reference+(slideCount>1?(letterSuffix->isChecked()?slideLetter(slideIndex):QStringLiteral(" · %1/%2").arg(slideIndex+1).arg(slideCount)):QString()));
             version.setText(QFontMetrics(version.font()).elidedText(currentVersion,Qt::ElideRight,version.width()));
             frame.render(&painter,QPoint(frame.x(),frame.y()),QRegion(),QWidget::DrawWindowBackground|QWidget::DrawChildren);
 

@@ -11,6 +11,7 @@ struct Passage {
 class Bible {
 public:
     QString id, name, license;
+    QStringList bookNames() const;
     bool load(const QByteArray &bytes, QString &error);
     bool lookup(const QString &reference, Passage &result, QString &error) const;
     bool chapterVerses(const QString &reference, QVector<Passage> &result, QString &error) const;

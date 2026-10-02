@@ -55,7 +55,7 @@ bool Bible::load(const QByteArray &bytes, QString &error)
 
 bool Bible::lookup(const QString &reference, Passage &result, QString &error) const
 {
-    static const QRegularExpression pattern(QStringLiteral("^(.+?)\\s+(\\d+)(?::(\\d+)(?:\\s*[-–]\\s*(\\d+))?)?$"));
+    static const QRegularExpression pattern(QStringLiteral("^(.+?)\\s+(\\d+)(?::(\\d+)(?:\\s*[-–]\\s*(\\d*))?)?$"));
     const auto match = pattern.match(reference.trimmed());
     if (!match.hasMatch()) {
         error = QStringLiteral("Usa Juan 3:16, Juan 3:16-18 o Juan 3."); return false;
@@ -63,6 +63,11 @@ bool Bible::lookup(const QString &reference, Passage &result, QString &error) co
     QString canonical;
     for (auto book = books.begin(); book != books.end(); ++book)
         if (normalize(book.key()) == normalize(match.captured(1))) { canonical = book.key(); break; }
+    if(canonical.isEmpty()) {
+        QStringList matches;for(auto book=books.begin();book!=books.end();++book)if(normalize(book.key()).startsWith(normalize(match.captured(1))))matches.append(book.key());
+        if(matches.size()==1)canonical=matches.first();
+        else if(matches.size()>1){error=QStringLiteral("Abreviatura ambigua: ")+matches.join(", ");return false;}
+    }
     const int chapterNumber = match.captured(2).toInt();
     const auto chapter = books.value(canonical).toObject().value(QString::number(chapterNumber)).toObject();
     if (canonical.isEmpty() || chapter.isEmpty()) {
@@ -70,7 +75,7 @@ bool Bible::lookup(const QString &reference, Passage &result, QString &error) co
     }
     int first = match.captured(3).isEmpty() ? 1 : match.captured(3).toInt();
     int last = first;
-    if (match.captured(3).isEmpty()) {
+    if (match.captured(3).isEmpty() || (reference.trimmed().endsWith('-') || reference.trimmed().endsWith(QChar(0x2013)))) {
         for (auto verse = chapter.begin(); verse != chapter.end(); ++verse) last = qMax(last, verse.key().toInt());
     } else if (!match.captured(4).isEmpty()) last = match.captured(4).toInt();
     if (first < 1 || last < first || last - first > 200) {
@@ -122,3 +127,5 @@ bool Bible::adjacent(const QString &reference, int direction, bool wholeChapter,
     if (!chapterVerses(book + ' ' + QString::number(chapter), next, error)) return false;
     result = direction > 0 ? next.first() : next.last(); error.clear(); return true;
 }
+
+QStringList Bible::bookNames() const { return books.keys(); }

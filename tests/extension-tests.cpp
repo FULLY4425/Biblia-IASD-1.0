@@ -1,5 +1,6 @@
 #include "slides.hpp"
 #include "native-style.hpp"
+#include "presentation-options.hpp"
 #include "openlp.hpp"
 #include "bible.hpp"
 #include <QApplication>
@@ -14,6 +15,9 @@ int main(int argc,char **argv)
 {
     QApplication app(argc,argv); int failures=0;
     auto check=[&](bool value,const char *name){std::cout<<(value?"PASS ":"FAIL ")<<name<<'\n';if(!value)++failures;};
+    check(cleanPassage("1. Uno[1]\r\ncontinuación\r\n2. Dos[2]",true,true)==QStringLiteral("1. Uno continuación\n2. Dos"),"cleanup preserves verse boundaries");
+    check(cleanPassage("Texto[1]\nsegundo",false,false)=="Texto[1]\nsegundo","cleanup can be disabled");
+    check(slideLetter(0)=="a" && slideLetter(25)=="z" && slideLetter(26)=="aa","slide suffix extends beyond z");
     QFont font("Arial");font.setPixelSize(64);
     QString text=QStringLiteral("Porque de tal manera amó Dios al mundo, que ha dado a su Hijo unigénito, para que todo aquel que en él cree, no se pierda, mas tenga vida eterna. ").repeated(20);
     auto slides=passageSlides(text,font,800,3);
