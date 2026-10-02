@@ -38,10 +38,10 @@ Invoke-Checked python @("$taskRoot/tests/verify_data.py")
 Invoke-Checked cmake @('--install', $pluginBuild, '--config', 'Release', '--prefix', $packageRoot)
 Copy-Item -LiteralPath "$taskRoot/LICENSE", "$taskRoot/README.md" -Destination $packageRoot
 $generatorPackage = Join-Path $packageRoot 'generador'
-foreach ($taskLibrary in @('Qt6Core.dll','Qt6Gui.dll','Qt6Widgets.dll','Qt6Sql.dll')) {
+foreach ($taskLibrary in @('Qt6Core.dll','Qt6Gui.dll','Qt6Widgets.dll')) {
     Copy-Item -LiteralPath "$qtPrefix/bin/$taskLibrary" -Destination $generatorPackage
 }
-foreach ($taskPlugin in @('platforms/qwindows.dll','sqldrivers/qsqlite.dll','styles/qmodernwindowsstyle.dll')) {
+foreach ($taskPlugin in @('platforms/qwindows.dll','styles/qmodernwindowsstyle.dll')) {
     if (Test-Path -LiteralPath "$qtPrefix/plugins/$taskPlugin") {
         $taskDestination = Join-Path $generatorPackage (Split-Path -Parent $taskPlugin)
         New-Item -ItemType Directory -Path $taskDestination -Force | Out-Null

@@ -5,8 +5,7 @@
 #include <QFile>
 #include <QJsonDocument>
 #include <QLabel>
-#include <QSqlDatabase>
-#include <QSqlQuery>
+#include <sqlite3.h>
 #include <QTemporaryDir>
 #include <iostream>
 
@@ -30,22 +29,16 @@ int main(int argc,char **argv)
     check(label.font().pixelSize()==48,"native CSS font size applies to verse");
     check(label.palette().color(QPalette::WindowText)==QColor("#ffd67a"),"native CSS verse color applies");
     QTemporaryDir directory;QString path=directory.filePath("bible.sqlite");
-    {
-        auto db=QSqlDatabase::addDatabase("QSQLITE","fixture");db.setDatabaseName(path);check(db.open(),"SQLite fixture opens");
-        QSqlQuery query(db);query.exec("CREATE TABLE book(id INTEGER PRIMARY KEY,name TEXT)");
-        query.exec("CREATE TABLE verse(id INTEGER PRIMARY KEY,book_id INTEGER,chapter INTEGER,verse INTEGER,text TEXT)");
-        query.exec("INSERT INTO book VALUES(1,'Juan')");query.exec("INSERT INTO verse VALUES(1,1,3,16,'Texto de prueba')");
-    }
-    QSqlDatabase::removeDatabase("fixture");
+    sqlite3 *db=nullptr;check(sqlite3_open(path.toUtf8().constData(),&db)==SQLITE_OK,"SQLite fixture opens");
+    sqlite3_exec(db,"CREATE TABLE book(id INTEGER PRIMARY KEY,name TEXT); CREATE TABLE verse(id INTEGER PRIMARY KEY,book_id INTEGER,chapter INTEGER,verse INTEGER,text TEXT); INSERT INTO book VALUES(1,'Juan'); INSERT INTO verse VALUES(1,1,3,16,'Texto de prueba');",nullptr,nullptr,nullptr);
+    sqlite3_close(db);
     QFile before(path);before.open(QIODevice::ReadOnly);auto original=before.readAll();before.close();
     QJsonObject converted;QString error;check(convertOpenLp(path,"test","Prueba","Fixture",converted,error),"OpenLP schema converts");
     Bible bible;Passage passage;check(bible.load(QJsonDocument(converted).toJson(),error)&&bible.lookup("Juan 3:16",passage,error)&&passage.text=="Texto de prueba","generated Bible can be queried");
     QFile after(path);after.open(QIODevice::ReadOnly);check(after.readAll()==original,"conversion leaves SQLite unchanged");after.close();
     check(!convertOpenLp(path,"test","Prueba","",converted,error),"license required");
-    {
-        auto db=QSqlDatabase::addDatabase("QSQLITE","duplicate");db.setDatabaseName(path);db.open();QSqlQuery query(db);query.exec("INSERT INTO verse VALUES(2,1,3,16,'Duplicado')");
-    }
-    QSqlDatabase::removeDatabase("duplicate");check(!convertOpenLp(path,"test","Prueba","Fixture",converted,error),"duplicate verses rejected");
+    sqlite3_open(path.toUtf8().constData(),&db);sqlite3_exec(db,"INSERT INTO verse VALUES(2,1,3,16,'Duplicado')",nullptr,nullptr,nullptr);sqlite3_close(db);
+    check(!convertOpenLp(path,"test","Prueba","Fixture",converted,error),"duplicate verses rejected");
     check(!convertOpenLp(directory.filePath("missing.sqlite"),"test","Prueba","Fixture",converted,error),"missing input rejected without creating database");
     return failures?1:0;
 }
