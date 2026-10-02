@@ -77,6 +77,7 @@ class Panel final : public QWidget {
 public:
     explicit Panel(QWidget *parent = nullptr) : QWidget(parent)
     {
+        QCoreApplication::addLibraryPath(dataPath("qt"));
         auto *layout = new QVBoxLayout(this);
         layout->setContentsMargins(8,8,8,8);
         setMinimumWidth(310);
@@ -337,6 +338,7 @@ private:
         connect(saveTheme,&QPushButton::clicked,this,[this]{
             bool ok=false; auto name=QInputDialog::getText(this,QStringLiteral("Guardar tema"),QStringLiteral("Nombre"),QLineEdit::Normal,{},&ok).trimmed();
             if(!ok||name.isEmpty())return;
+            if(css->toPlainText().size()>32000){status->setText(QStringLiteral("Máximo 32 000 caracteres de estilos por tema."));return;}
             if(themes.size()>=100){status->setText(QStringLiteral("Máximo 100 temas personales."));return;}
             QJsonObject style; const auto settings=save();
             for(const auto &key:styleKeys())style[key]=settings.value(key);
@@ -411,6 +413,7 @@ private:
     {
         const auto directory=configPath("library");QDir().mkpath(directory);
         QSaveFile file(QDir(directory).filePath("library.json"));auto bytes=QJsonDocument(QJsonObject{{"themes",themes},{"lists",lists}}).toJson();
+        if(bytes.size()>8*1024*1024){status->setText(QStringLiteral("La biblioteca local supera el máximo de 8 MB."));return false;}
         if(!file.open(QIODevice::WriteOnly)||file.write(bytes)!=bytes.size()||!file.commit()){status->setText(QStringLiteral("No se pudo guardar temas y listas."));return false;}return true;
     }
     void loadLibrary()
