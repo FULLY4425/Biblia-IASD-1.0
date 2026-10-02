@@ -28,7 +28,7 @@ jobs:
       - name: Publicar DLL y datos
         uses: actions/upload-artifact@v4
         with:
-          name: obs-biblia-0.1.0-windows-x64
+          name: obs-biblia-0.2.0-windows-x64
           path: dist/
           if-no-files-found: error
           retention-days: 30

@@ -1,6 +1,7 @@
 #include <obs-module.h>
 #include <obs-frontend-api.h>
 #include <util/platform.h>
+#include <graphics/vec4.h>
 #include <QApplication>
 #include <QCheckBox>
 #include <QColorDialog>
@@ -25,6 +26,10 @@
 #include <QSpinBox>
 #include <QTabWidget>
 #include <QTextEdit>
+#include <QListWidget>
+#include <QHBoxLayout>
+#include <QSignalBlocker>
+#include <QTimer>
 #include <QVBoxLayout>
 #include <mutex>
 #include "bible.hpp"
@@ -39,6 +44,8 @@ constexpr int Width = 1920, Height = 1080;
 std::mutex frameMutex;
 QImage sharedFrame;
 uint64_t sharedRevision = 0;
+obs_source_t *sharedMedia = nullptr;
+QString sharedVideoPath;
 
 QString dataPath(const char *relative)
 {
@@ -58,6 +65,9 @@ public:
     explicit Panel(QWidget *parent = nullptr) : QWidget(parent)
     {
         auto *layout = new QVBoxLayout(this);
+        layout->setContentsMargins(8,8,8,8);
+        setMinimumWidth(310);
+        setStyleSheet(QStringLiteral("QListWidget { background:#101116; border:1px solid #41434d; border-radius:5px; } QListWidget::item { padding:10px 7px; border-bottom:1px solid #292b34; } QListWidget::item:selected { background:#39435b; color:white; border-left:3px solid #a17bdc; } QPushButton { padding:5px; }"));
         auto *tabs = new QTabWidget(this);
         auto *search = new QWidget(tabs);
         auto *searchLayout = new QVBoxLayout(search);
@@ -70,7 +80,19 @@ public:
         searchLayout->addLayout(form);
         auto *lookup = new QPushButton(QStringLiteral("Buscar pasaje"), search);
         searchLayout->addWidget(lookup);
-        text = new QTextEdit(search); text->setReadOnly(true); searchLayout->addWidget(text);
+        auto *navigation = new QHBoxLayout;
+        const QStringList labels = {QStringLiteral("« Cap."), QStringLiteral("‹ Vers."), QStringLiteral("Vers. ›"), QStringLiteral("Cap. »")};
+        for (int n = 0; n < labels.size(); ++n) {
+            auto *button = new QPushButton(labels[n], search); navigation->addWidget(button);
+            connect(button, &QPushButton::clicked, this, [this,n] { navigate(n < 2 ? -1 : 1, n == 0 || n == 3); });
+        }
+        searchLayout->addLayout(navigation);
+        passageTitle = new QLabel(QStringLiteral("Selecciona un pasaje"), search); searchLayout->addWidget(passageTitle);
+        verseList = new QListWidget(search); verseList->setSelectionMode(QAbstractItemView::ExtendedSelection);
+        verseList->setWordWrap(true); verseList->setMinimumHeight(150); searchLayout->addWidget(verseList,1);
+        autoProject = new QCheckBox(QStringLiteral("Proyectar al seleccionar / navegar"),search);
+        autoProject->setToolTip(QStringLiteral("Actívalo para cambiar la salida con un clic. Desactivado: prepara el pasaje y pulsa Proyectar."));
+        searchLayout->addWidget(autoProject);
         auto *project = new QPushButton(QStringLiteral("Proyectar"), search);
         auto *clear = new QPushButton(QStringLiteral("Ocultar pasaje"), search);
         searchLayout->addWidget(project); searchLayout->addWidget(clear);
@@ -80,37 +102,53 @@ public:
 
         auto *appearance = new QWidget(tabs);
         auto *styleForm = new QFormLayout(appearance);
+        presentation = new QComboBox(appearance);
+        presentation->addItems({QStringLiteral("Franja inferior"),QStringLiteral("Texto centrado")});
+        styleForm->addRow(QStringLiteral("Diseño de proyección"), presentation);
         fonts = new QFontComboBox(appearance); fonts->setCurrentFont(QFont(QStringLiteral("Arial")));
         size = new QSpinBox(appearance); size->setRange(24, 160); size->setValue(64);
         bold = new QCheckBox(QStringLiteral("Negrita"), appearance); bold->setChecked(true);
         italic = new QCheckBox(QStringLiteral("Cursiva"), appearance);
         auto *colorButton = new QPushButton(QStringLiteral("Color del texto…"), appearance);
         backgrounds = new QComboBox(appearance);
-        backgrounds->addItems({QStringLiteral("Azul profundo"), QStringLiteral("Amanecer"), QStringLiteral("Bosque"), QStringLiteral("Púrpura"), QStringLiteral("Imagen propia")});
+        backgrounds->addItems({QStringLiteral("Azul profundo"), QStringLiteral("Amanecer"), QStringLiteral("Bosque"), QStringLiteral("Púrpura"), QStringLiteral("Imagen propia"), QStringLiteral("Video propio"), QStringLiteral("Transparente")});
         auto *imageButton = new QPushButton(QStringLiteral("Escoger imagen…"), appearance);
+        auto *videoButton = new QPushButton(QStringLiteral("Escoger video…"), appearance);
+        videoLabel = new QLabel(QStringLiteral("Sin video seleccionado"), appearance); videoLabel->setWordWrap(true);
         imageLabel = new QLabel(QStringLiteral("Sin imagen seleccionada"), appearance); imageLabel->setWordWrap(true);
         shade = new QSpinBox(appearance); shade->setRange(0, 90); shade->setSuffix(" %"); shade->setValue(35);
         styleForm->addRow(QStringLiteral("Tipografía"), fonts);
         styleForm->addRow(QStringLiteral("Tamaño de letra (máximo)"), size);
         styleForm->addRow(bold); styleForm->addRow(italic); styleForm->addRow(colorButton);
-        styleForm->addRow(QStringLiteral("Fondo incluido"), backgrounds);
-        styleForm->addRow(imageButton); styleForm->addRow(imageLabel);
-        styleForm->addRow(QStringLiteral("Oscurecer fondo"), shade);
+        bandOpacity = new QSpinBox(appearance); bandOpacity->setRange(0,100); bandOpacity->setValue(85); bandOpacity->setSuffix(" %");
+        auto *bandButton = new QPushButton(QStringLiteral("Color de la franja…"),appearance);
+        styleForm->addRow(bandButton); styleForm->addRow(QStringLiteral("Opacidad de franja"),bandOpacity);
         auto *hint = new QLabel(QStringLiteral("La apariencia actualiza el pasaje proyectado. El texto se ajusta al espacio disponible."), appearance);
         hint->setWordWrap(true); styleForm->addRow(hint);
         tabs->addTab(appearance, QStringLiteral("Apariencia")); layout->addWidget(tabs);
+        auto *backgroundTab = new QWidget(tabs); auto *backgroundForm = new QFormLayout(backgroundTab);
+        backgroundForm->addRow(QStringLiteral("Fondo"),backgrounds);
+        backgroundForm->addRow(imageButton); backgroundForm->addRow(imageLabel);
+        backgroundForm->addRow(videoButton); backgroundForm->addRow(videoLabel);
+        backgroundForm->addRow(QStringLiteral("Oscurecer fondo"),shade);
+        auto *videoHint = new QLabel(QStringLiteral("Videos locales MP4, MOV, MKV, WEBM o AVI. Se repiten en bucle, sin sonido. El video en movimiento se ve en la fuente de OBS."),backgroundTab);
+        videoHint->setWordWrap(true); backgroundForm->addRow(videoHint);
+        tabs->addTab(backgroundTab,QStringLiteral("Fondos"));
         preview = new QLabel(this); preview->setMinimumSize(240, 135); preview->setAlignment(Qt::AlignCenter);
         layout->addWidget(preview);
         status = new QLabel(this); status->setWordWrap(true); layout->addWidget(status);
         connect(lookup, &QPushButton::clicked, this, [this] { find(); });
         connect(reference, &QLineEdit::returnPressed, this, [this] { find(); });
         connect(project, &QPushButton::clicked, this, [this] {
-            if (!find()) return;
-            const auto old = current; const auto oldVersion = currentVersion; const bool oldVisible = visible;
-            current = candidate; currentVersion = versions->currentText(); visible = true;
-            if (!render()) { current = old; currentVersion = oldVersion; visible = oldVisible; }
-            else status->setText(QStringLiteral("Proyectando %1 · %2").arg(current.reference, currentVersion));
+            if (selectionDirty) { if (selectPassage()) projectCandidate(); }
+            else if (find()) projectCandidate();
         });
+        connect(verseList,&QListWidget::itemSelectionChanged,this,[this] {
+            if (restoring || browsing) return;
+            selectionDirty = true;
+            if (selectPassage() && autoProject->isChecked()) projectCandidate();
+        });
+        connect(verseList,&QListWidget::itemDoubleClicked,this,[this](QListWidgetItem *) { if (selectPassage()) projectCandidate(); });
         connect(clear, &QPushButton::clicked, this, [this] { visible = false; render(); status->setText(QStringLiteral("Pasaje oculto.")); });
         connect(import, &QPushButton::clicked, this, [this] { importVersion(); });
         auto changed = [this] { if (!restoring) render(); };
@@ -119,8 +157,11 @@ public:
         connect(shade, qOverload<int>(&QSpinBox::valueChanged), this, changed);
         connect(bold, &QCheckBox::toggled, this, changed); connect(italic, &QCheckBox::toggled, this, changed);
         connect(backgrounds, qOverload<int>(&QComboBox::currentIndexChanged), this, changed);
-        connect(versions, qOverload<int>(&QComboBox::currentIndexChanged), this, [this] { text->clear(); });
-        connect(reference, &QLineEdit::textEdited, this, [this] { text->clear(); });
+        connect(presentation, qOverload<int>(&QComboBox::currentIndexChanged), this, changed);
+        connect(bandOpacity,qOverload<int>(&QSpinBox::valueChanged),this,changed);
+        connect(bandButton,&QPushButton::clicked,this,[this] { auto selected=QColorDialog::getColor(bandColor,this,QStringLiteral("Color de la franja")); if(selected.isValid()){ bandColor=selected; render(); } });
+        connect(versions, qOverload<int>(&QComboBox::currentIndexChanged), this, [this] { verseList->clear(); selectionDirty=false; });
+        connect(reference, &QLineEdit::textEdited, this, [this] { verseList->clear(); selectionDirty=false; });
         connect(colorButton, &QPushButton::clicked, this, [this] {
             const QColor selected = QColorDialog::getColor(color, this, QStringLiteral("Color del texto"));
             if (selected.isValid()) { color = selected; render(); }
@@ -139,8 +180,24 @@ public:
             customImage = image; imagePath = path; imageLabel->setText(QFileInfo(path).fileName());
             backgrounds->setCurrentIndex(4); render();
         });
+        connect(videoButton,&QPushButton::clicked,this,[this] {
+            const auto path=QFileDialog::getOpenFileName(this,QStringLiteral("Seleccionar video de fondo"),{},QStringLiteral("Videos (*.mp4 *.mov *.mkv *.webm *.avi *.m4v)"));
+            if(path.isEmpty()) return;
+            if(!QFileInfo(path).isFile() || !QFileInfo(path).isReadable()) { status->setText(QStringLiteral("No se puede leer el video.")); return; }
+            videoPath=path; videoLabel->setText(QFileInfo(path).fileName()); backgrounds->setCurrentIndex(5); render();
+        });
         loadVersions(); render();
         status->setText(QStringLiteral("Agrega la fuente «Biblia» a tu escena y busca un pasaje."));
+        auto *mediaStatus=new QTimer(this); mediaStatus->setInterval(1000);
+        connect(mediaStatus,&QTimer::timeout,this,[this] {
+            obs_source_t *media;
+            {std::lock_guard<std::mutex> lock(frameMutex); media=obs_source_get_ref(sharedMedia);}
+            if(media){
+                if(obs_source_media_get_state(media)==OBS_MEDIA_STATE_ERROR)
+                    status->setText(QStringLiteral("No se pudo reproducir el video. Escoge otro archivo compatible con OBS."));
+                obs_source_release(media);
+            }
+        }); mediaStatus->start();
     }
 
     QJsonObject save() const
@@ -148,7 +205,9 @@ public:
         return {{"version", versions->currentData().toString()}, {"reference", reference->text()},
                 {"font", fonts->currentFont().family()}, {"size", size->value()}, {"bold", bold->isChecked()},
                 {"italic", italic->isChecked()}, {"color", color.name()}, {"background", backgrounds->currentIndex()},
-                {"image", imagePath}, {"shade", shade->value()}, {"visible", visible},
+                {"image", imagePath}, {"video",videoPath}, {"presentation",presentation->currentIndex()},
+                {"bandColor",bandColor.name()}, {"bandOpacity",bandOpacity->value()}, {"autoProject",autoProject->isChecked()},
+                {"shade", shade->value()}, {"visible", visible},
                 {"projectedText", current.text}, {"projectedReference", current.reference}, {"projectedVersion", currentVersion}};
     }
     void restore(const QJsonObject &o)
@@ -162,7 +221,11 @@ public:
         size->setValue(o.value("size").toInt(64)); bold->setChecked(o.value("bold").toBool(true));
         italic->setChecked(o.value("italic").toBool(false)); color = QColor(o.value("color").toString("#ffffff"));
         if (!color.isValid()) color = Qt::white;
-        backgrounds->setCurrentIndex(qBound(0, o.value("background").toInt(), 4));
+        backgrounds->setCurrentIndex(qBound(0, o.value("background").toInt(), 6));
+        presentation->setCurrentIndex(o.value("presentation").toInt(0));
+        bandColor=QColor(o.value("bandColor").toString("#542966")); if(!bandColor.isValid()) bandColor=QColor("#542966");
+        bandOpacity->setValue(o.value("bandOpacity").toInt(85)); autoProject->setChecked(o.value("autoProject").toBool(false));
+        videoPath=o.value("video").toString(); videoLabel->setText(QFileInfo(videoPath).isFile()?QFileInfo(videoPath).fileName():QStringLiteral("Sin video disponible"));
         shade->setValue(o.value("shade").toInt(35)); imagePath = o.value("image").toString();
         customImage = QImage();
         if (!imagePath.isEmpty()) {
@@ -175,22 +238,23 @@ public:
         imageLabel->setText(customImage.isNull() ? QStringLiteral("Sin imagen disponible") : QFileInfo(imagePath).fileName());
         current = {o.value("projectedReference").toString(), o.value("projectedText").toString()};
         currentVersion = o.value("projectedVersion").toString(); visible = o.value("visible").toBool(false);
-        restoring = false; text->clear(); status->clear(); render();
+        restoring = false; verseList->clear(); selectionDirty=false; status->clear(); render();
     }
 private:
-    QComboBox *versions, *backgrounds;
+    QComboBox *versions, *backgrounds, *presentation;
     QLineEdit *reference;
     QFontComboBox *fonts;
-    QSpinBox *size, *shade;
-    QCheckBox *bold, *italic;
-    QTextEdit *text;
-    QLabel *preview, *status, *imageLabel;
+    QSpinBox *size, *shade, *bandOpacity;
+    QCheckBox *bold, *italic, *autoProject;
+    QListWidget *verseList;
+    QLabel *preview, *status, *imageLabel, *videoLabel, *passageTitle;
     QVector<Bible> bibles;
     Passage candidate, current;
-    QString currentVersion, imagePath;
+    QString currentVersion, imagePath, videoPath;
     QColor color = Qt::white;
+    QColor bandColor = QColor("#542966");
     QImage customImage;
-    bool visible = false, restoring = false;
+    bool visible = false, restoring = false, browsing=false, selectionDirty=false;
 
     void loadVersions()
     {
@@ -214,10 +278,56 @@ private:
         int index = versions->currentIndex(); QString error;
         if (index < 0 || index >= bibles.size()) { status->setText(QStringLiteral("Importa una versión bíblica JSON.")); return false; }
         if (!bibles[index].lookup(reference->text(), candidate, error)) {
-            text->clear(); status->setText(error); return false;
+            verseList->clear(); selectionDirty=false; status->setText(error); return false;
         }
-        text->setPlainText(candidate.reference + " · " + bibles[index].name + "\n\n" + candidate.text);
+        QVector<Passage> chapter;
+        if (!bibles[index].chapterVerses(candidate.reference,chapter,error)) { status->setText(error); return false; }
+        browsing=true; verseList->clear();
+        const QString base=candidate.reference.section(':',0,0);
+        const QString range=candidate.reference.section(':',1,1);
+        const int first=range.isEmpty()?1:range.section('-',0,0).toInt();
+        const int last=range.contains('-')?range.section('-',1,1).toInt():(range.isEmpty()?201:first);
+        QListWidgetItem *firstItem=nullptr;
+        for(const auto &verse:chapter){
+            const int number=verse.reference.section(':',1,1).toInt();
+            auto *item=new QListWidgetItem(QString::number(number)+QStringLiteral("   ")+verse.text,verseList);
+            item->setData(Qt::UserRole,verse.reference);
+            if(number>=first && number<=last){ item->setSelected(true); if(!firstItem) firstItem=item; }
+        }
+        if(firstItem) verseList->scrollToItem(firstItem,QAbstractItemView::PositionAtCenter);
+        browsing=false; selectionDirty=false;
+        passageTitle->setText(base+QStringLiteral(" · ")+bibles[index].name);
         status->setText(QStringLiteral("Pasaje encontrado. Pulsa Proyectar para mostrarlo.")); return true;
+    }
+    bool selectPassage()
+    {
+        const auto selected=verseList->selectedItems();
+        if(selected.isEmpty()) { status->setText(QStringLiteral("Selecciona uno o varios versículos contiguos.")); return false; }
+        int first=verseList->count(),last=-1;
+        for(auto *item:selected){ int row=verseList->row(item); first=qMin(first,row); last=qMax(last,row); }
+        if(last-first+1!=selected.size()){ status->setText(QStringLiteral("Selecciona un rango continuo de versículos.")); return false; }
+        const auto start=verseList->item(first)->data(Qt::UserRole).toString();
+        QString ref=start;
+        if(last>first) ref+='-'+verseList->item(last)->data(Qt::UserRole).toString().section(':',1,1);
+        const int index=versions->currentIndex(); QString error;
+        if(index<0 || index>=bibles.size() || !bibles[index].lookup(ref,candidate,error)){ status->setText(error); return false; }
+        reference->setText(candidate.reference);
+        status->setText(QStringLiteral("Seleccionado %1. Pulsa Proyectar o haz doble clic.").arg(candidate.reference)); return true;
+    }
+    void projectCandidate()
+    {
+        const auto old=current; const auto oldVersion=currentVersion; const bool oldVisible=visible;
+        current=candidate; currentVersion=versions->currentText(); visible=true;
+        if(!render()){current=old; currentVersion=oldVersion; visible=oldVisible;}
+        else status->setText(QStringLiteral("Proyectando %1 · %2").arg(current.reference,currentVersion));
+    }
+    void navigate(int direction,bool wholeChapter)
+    {
+        const int index=versions->currentIndex(); Passage next; QString error;
+        if(index<0 || index>=bibles.size()) return;
+        if(!bibles[index].adjacent(reference->text(),direction,wholeChapter,next,error)){ status->setText(QStringLiteral("No hay otro pasaje disponible en esa dirección.")); return; }
+        reference->setText(next.reference); selectionDirty=false;
+        if(find() && autoProject->isChecked()) projectCandidate();
     }
     void importVersion()
     {
@@ -240,16 +350,19 @@ private:
     }
     bool render()
     {
-        QImage image(Width, Height, QImage::Format_RGBA8888); image.fill(Qt::transparent);
+        QImage image(Width, Height, QImage::Format_RGBA8888_Premultiplied); image.fill(Qt::transparent);
         if (visible && !current.text.isEmpty()) {
             if (backgrounds->currentIndex() == 4 && customImage.isNull()) {
                 status->setText(QStringLiteral("Selecciona una imagen de fondo válida.")); return false;
+            }
+            if(backgrounds->currentIndex()==5 && (!QFileInfo(videoPath).isFile() || !QFileInfo(videoPath).isReadable())){
+                status->setText(QStringLiteral("Selecciona un video de fondo válido.")); return false;
             }
             QPainter painter(&image); painter.setRenderHint(QPainter::Antialiasing); painter.setRenderHint(QPainter::TextAntialiasing);
             if (backgrounds->currentIndex() == 4) {
                 const auto scaled = customImage.scaled(Width, Height, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
                 painter.drawImage(QPoint((Width-scaled.width())/2, (Height-scaled.height())/2), scaled);
-            } else {
+            } else if(backgrounds->currentIndex()<4) {
                 static const char *starts[] = {"#07172f", "#3e2145", "#082c25", "#241244"};
                 static const char *ends[] = {"#245b85", "#c57c46", "#467c58", "#795898"};
                 const int index = qBound(0, backgrounds->currentIndex(), 3);
@@ -258,31 +371,96 @@ private:
                 painter.setPen(Qt::NoPen); painter.setBrush(QColor(255,255,255,12));
                 painter.drawEllipse(QPoint(1600,200), 500,500); painter.drawEllipse(QPoint(150,1000), 600,600);
             }
-            painter.fillRect(image.rect(), QColor(0,0,0,shade->value()*255/100));
+            if(backgrounds->currentIndex()!=6) painter.fillRect(image.rect(), QColor(0,0,0,shade->value()*255/100));
             QFont font = fonts->currentFont(); font.setBold(bold->isChecked()); font.setItalic(italic->isChecked());
-            const QRect area(130, 120, Width-260, Height-350);
-            const int flags = Qt::AlignCenter | Qt::TextWordWrap;
+            const bool lower=presentation->currentIndex()==0;
+            const QRect area=lower?QRect(60,Height-218,Width-120,168):QRect(130,120,Width-260,Height-350);
+            const int flags=(lower?(Qt::AlignLeft|Qt::AlignVCenter):Qt::AlignCenter)|Qt::TextWordWrap;
             const int pixel = fitPassage(painter, font, current.text, area.size(), size->value());
             if (!pixel) { status->setText(QStringLiteral("El pasaje es demasiado largo. Proyecta un rango más corto.")); return false; }
+            if(lower){
+                QColor body=bandColor; body.setAlpha(bandOpacity->value()*255/100);
+                painter.fillRect(QRect(24,Height-300,Width-48,276),body);
+                QColor header=bandColor.lighter(140); header.setAlpha(bandOpacity->value()*255/100);
+                painter.fillRect(QRect(24,Height-300,Width-48,60),header);
+            }
             font.setPixelSize(pixel); painter.setFont(font);
             painter.setPen(QColor(0,0,0,180)); painter.drawText(area.translated(3,3), flags, current.text);
             painter.setPen(color); painter.drawText(area, flags, current.text);
             font.setPixelSize(36); font.setBold(true); painter.setFont(font);
-            painter.drawText(QRect(130, Height-185, Width-260, 100), flags, current.reference + " · " + currentVersion);
+            if(lower){
+                painter.drawText(QRect(60,Height-300,850,60),Qt::AlignLeft|Qt::AlignVCenter,current.reference);
+                font.setPixelSize(28); painter.setFont(font);
+                painter.drawText(QRect(970,Height-300,Width-1030,60),Qt::AlignRight|Qt::AlignVCenter,
+                    painter.fontMetrics().elidedText(currentVersion,Qt::ElideRight,Width-1030));
+            }else painter.drawText(QRect(130, Height-185, Width-260, 100), flags, current.reference + " · " + currentVersion);
         }
-        preview->setPixmap(QPixmap::fromImage(image.scaled(320,180,Qt::KeepAspectRatio,Qt::SmoothTransformation)));
-        std::lock_guard<std::mutex> lock(frameMutex); sharedFrame = image; ++sharedRevision; return true;
+        QImage panelPreview=image;
+        const QString desiredVideo=visible && backgrounds->currentIndex()==5?videoPath:QString();
+        if(!desiredVideo.isEmpty()){
+            panelPreview=QImage(Width,Height,QImage::Format_RGBA8888_Premultiplied); panelPreview.fill(QColor("#171c29"));
+            QPainter p(&panelPreview); p.setPen(Qt::white); QFont f; f.setPixelSize(48); p.setFont(f);
+            p.drawText(QRect(100,100,Width-200,500),Qt::AlignCenter|Qt::TextWordWrap,QStringLiteral("VIDEO · ")+QFileInfo(videoPath).fileName()+QStringLiteral("\nReproducción en la fuente de OBS"));
+            p.drawImage(0,0,image);
+        }
+        preview->setPixmap(QPixmap::fromImage(panelPreview.scaled(280,158,Qt::KeepAspectRatio,Qt::SmoothTransformation)));
+        obs_source_t *replacement=nullptr;
+        bool replace=false;
+        {std::lock_guard<std::mutex> lock(frameMutex); replace=desiredVideo!=sharedVideoPath;}
+        if(replace && !desiredVideo.isEmpty()){
+            auto *settings=obs_data_create(); const auto path=desiredVideo.toUtf8();
+            obs_data_set_bool(settings,"is_local_file",true); obs_data_set_string(settings,"local_file",path.constData());
+            obs_data_set_bool(settings,"looping",true); obs_data_set_bool(settings,"restart_on_activate",true);
+            obs_data_set_bool(settings,"clear_on_media_end",false); obs_data_set_bool(settings,"close_when_inactive",true);
+            replacement=obs_source_create_private("ffmpeg_source","Biblia · video de fondo",settings); obs_data_release(settings);
+            if(!replacement){ status->setText(QStringLiteral("OBS no pudo crear el fondo de video. Comprueba el módulo multimedia.")); return false; }
+            obs_source_set_muted(replacement,true); obs_source_set_volume(replacement,0.0f);
+        }
+        obs_source_t *previous=nullptr;
+        {
+            std::lock_guard<std::mutex> lock(frameMutex);
+            if(replace){previous=sharedMedia; sharedMedia=replacement; sharedVideoPath=desiredVideo;}
+            sharedFrame=image; ++sharedRevision;
+        }
+        obs_source_release(previous); return true;
     }
 };
 QPointer<Panel> panel;
 
-struct Source { gs_texture_t *texture = nullptr; uint64_t revision = 0; };
+struct Source {
+    gs_texture_t *texture=nullptr;
+    gs_texrender_t *mediaCanvas=nullptr;
+    uint64_t revision=0;
+    obs_source_t *parent=nullptr, *media=nullptr;
+    std::mutex mediaMutex;
+};
 const char *sourceName(void *) { return "Biblia"; }
-void *createSource(obs_data_t *, obs_source_t *) { return new Source; }
+void *createSource(obs_data_t *, obs_source_t *parent) { auto *source=new Source; source->parent=parent; return source; }
+void tickSource(void *data,float)
+{
+    auto *source=static_cast<Source *>(data); obs_source_t *media;
+    {std::lock_guard<std::mutex> lock(frameMutex); media=obs_source_get_ref(sharedMedia);}
+    obs_source_t *previous=nullptr; bool changed=false;
+    {
+        std::lock_guard<std::mutex> lock(source->mediaMutex);
+        if(media!=source->media){ previous=source->media; source->media=media; changed=true; }
+    }
+    if(!changed){obs_source_release(media); return;}
+    if(previous){obs_source_remove_active_child(source->parent,previous); obs_source_release(previous);}
+    if(media) obs_source_add_active_child(source->parent,media);
+}
+void enumerateMedia(void *data,obs_source_enum_proc_t callback,void *param)
+{
+    auto *source=static_cast<Source *>(data); obs_source_t *media;
+    {std::lock_guard<std::mutex> lock(source->mediaMutex); media=obs_source_get_ref(source->media);}
+    if(media){ callback(source->parent,media,param); obs_source_release(media); }
+}
 void destroySource(void *data)
 {
-    auto *source = static_cast<Source *>(data); obs_enter_graphics();
-    gs_texture_destroy(source->texture); obs_leave_graphics(); delete source;
+    auto *source = static_cast<Source *>(data);
+    if(source->media){obs_source_remove_active_child(source->parent,source->media); obs_source_release(source->media);}
+    obs_enter_graphics();
+    gs_texture_destroy(source->texture); gs_texrender_destroy(source->mediaCanvas); obs_leave_graphics(); delete source;
 }
 void renderSource(void *data, gs_effect_t *)
 {
@@ -296,6 +474,27 @@ void renderSource(void *data, gs_effect_t *)
         if (!source->texture) source->texture = gs_texture_create(Width, Height, GS_RGBA, 1, &pixels, GS_DYNAMIC);
         else gs_texture_set_image(source->texture, pixels, uint32_t(image.bytesPerLine()), false);
         if (source->texture) source->revision = revision;
+    }
+    obs_source_t *media;
+    {std::lock_guard<std::mutex> lock(source->mediaMutex); media=obs_source_get_ref(source->media);}
+    if(media){
+        const auto width=obs_source_get_width(media),height=obs_source_get_height(media);
+        if(width && height){
+            if(!source->mediaCanvas) source->mediaCanvas=gs_texrender_create(GS_RGBA,GS_ZS_NONE);
+            if(source->mediaCanvas){
+                gs_texrender_reset(source->mediaCanvas);
+                if(gs_texrender_begin(source->mediaCanvas,Width,Height)){
+                    vec4 clear; vec4_zero(&clear); gs_clear(GS_CLEAR_COLOR,&clear,0.0f,0);
+                    gs_ortho(0,float(Width),0,float(Height),-100.0f,100.0f);
+                    const float scale=qMax(float(Width)/float(width),float(Height)/float(height));
+                    gs_matrix_push(); gs_matrix_translate3f((Width-float(width)*scale)/2.0f,(Height-float(height)*scale)/2.0f,0.0f);
+                    gs_matrix_scale3f(scale,scale,1.0f); obs_source_video_render(media); gs_matrix_pop();
+                    gs_texrender_end(source->mediaCanvas);
+                    obs_source_draw(gs_texrender_get_texture(source->mediaCanvas),0,0,Width,Height,false);
+                }
+            }
+        }
+        obs_source_release(media);
     }
     if (source->texture) obs_source_draw(source->texture, 0, 0, Width, Height, false);
 }
@@ -318,9 +517,10 @@ void collectionState(obs_data_t *data, bool saving, void *)
 bool obs_module_load(void)
 {
     obs_source_info info = {}; info.id = "obs_biblia_source"; info.type = OBS_SOURCE_TYPE_INPUT;
-    info.output_flags = OBS_SOURCE_VIDEO | OBS_SOURCE_CAP_DONT_SHOW_PROPERTIES;
+    info.output_flags = OBS_SOURCE_VIDEO | OBS_SOURCE_CUSTOM_DRAW | OBS_SOURCE_COMPOSITE | OBS_SOURCE_CAP_DONT_SHOW_PROPERTIES;
     info.get_name = sourceName; info.create = createSource; info.destroy = destroySource;
     info.get_width = getWidth; info.get_height = getHeight; info.video_render = renderSource;
+    info.video_tick=tickSource; info.enum_active_sources=enumerateMedia; info.enum_all_sources=enumerateMedia;
     obs_register_source(&info);
     return true;
 }
@@ -337,4 +537,7 @@ void obs_module_unload(void)
     obs_frontend_remove_save_callback(collectionState, nullptr);
     if (panel) obs_frontend_remove_dock("obs-biblia-panel");
     panel = nullptr;
+    obs_source_t *media;
+    {std::lock_guard<std::mutex> lock(frameMutex); media=sharedMedia; sharedMedia=nullptr; sharedVideoPath.clear(); sharedFrame=QImage();}
+    obs_source_release(media);
 }

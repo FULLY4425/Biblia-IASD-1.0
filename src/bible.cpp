@@ -86,3 +86,39 @@ bool Bible::lookup(const QString &reference, Passage &result, QString &error) co
     if (!match.captured(3).isEmpty()) result.reference += ":" + QString::number(first) + (last > first ? "-" + QString::number(last) : QString());
     result.text = lines.join("\n"); error.clear(); return true;
 }
+
+bool Bible::chapterVerses(const QString &reference, QVector<Passage> &result, QString &error) const
+{
+    Passage found;
+    if (!lookup(reference, found, error)) return false;
+    const QString base = found.reference.section(':', 0, 0);
+    QVector<Passage> verses;
+    for (int n = 1; n <= 201; ++n) {
+        Passage verse; QString ignored;
+        if (!lookup(base + ':' + QString::number(n), verse, ignored)) continue;
+        verses.append(verse);
+    }
+    if (verses.isEmpty()) { error = QStringLiteral("No se pudo abrir el capítulo."); return false; }
+    result = verses; error.clear(); return true;
+}
+
+bool Bible::adjacent(const QString &reference, int direction, bool wholeChapter, Passage &result, QString &error) const
+{
+    if (direction != -1 && direction != 1) return false;
+    Passage found;
+    if (!lookup(reference, found, error)) return false;
+    static const QRegularExpression parts(QStringLiteral("^(.+) (\\d+)(?::(\\d+)(?:-(\\d+))?)?$"));
+    const auto match = parts.match(found.reference);
+    const QString book = match.captured(1);
+    int chapter = match.captured(2).toInt();
+    if (wholeChapter)
+        return lookup(book + ' ' + QString::number(chapter + direction), result, error);
+    int verse = match.captured(3).isEmpty() ? 1 : match.captured(3).toInt();
+    if (direction > 0 && !match.captured(4).isEmpty()) verse = match.captured(4).toInt();
+    QString ignored;
+    if (lookup(book + ' ' + QString::number(chapter) + ':' + QString::number(verse + direction), result, ignored)) return true;
+    chapter += direction;
+    QVector<Passage> next;
+    if (!chapterVerses(book + ' ' + QString::number(chapter), next, error)) return false;
+    result = direction > 0 ? next.first() : next.last(); error.clear(); return true;
+}

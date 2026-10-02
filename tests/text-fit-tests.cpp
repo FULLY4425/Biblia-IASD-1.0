@@ -24,6 +24,9 @@ int main(int argc, char **argv)
         Qt::AlignTop | Qt::AlignHCenter | Qt::TextWordWrap | Qt::TextDontClip, chapter.text);
     if (bounds.height() > 730 || bounds.width() > 1660) return 4;
     if (fitPassage(painter, font, chapter.text.repeated(10), area, 64) != 0) return 5;
+    const int lowerSize=fitPassage(painter,font,verse.text,QSize(1800,168),64);
+    if(lowerSize<18 || lowerSize>64) return 6;
+    if(fitPassage(painter,font,chapter.text,QSize(1800,168),64)!=0) return 7;
     std::cout << "Verse size: " << shortSize << ", chapter size: " << chapterSize
               << ", measured chapter height: " << bounds.height() << "\n";
     return 0;

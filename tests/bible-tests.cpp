@@ -5,7 +5,7 @@
 int main(int argc, char **argv)
 {
     QCoreApplication app(argc, argv);
-    const QByteArray data = R"({"id":"test","name":"Test","license":"CC0","books":{"Génesis":{"1":{"1":"Uno","2":"Dos","3":"Tres"}},"1 Juan":{"2":{"1":"Cuatro"}}}})";
+    const QByteArray data = R"({"id":"test","name":"Test","license":"CC0","books":{"Génesis":{"1":{"1":"Uno","2":"Dos","3":"Tres"},"2":{"1":"Nuevo","2":"Último"}},"1 Juan":{"2":{"1":"Cuatro"}}}})";
     Bible bible; QString error; Passage passage; int failures = 0;
     auto check = [&](bool ok, const char *label) { if (!ok) { std::cerr << label << '\n'; ++failures; } };
     check(bible.load(data, error), "load valid data");
@@ -20,6 +20,13 @@ int main(int argc, char **argv)
     check(!bible.lookup("Libro 1:1", passage, error), "reject missing book");
     check(!bible.lookup("Génesis", passage, error), "reject incomplete reference");
     check(!bible.lookup("Génesis 1:1-10000", passage, error), "reject oversized range");
+    QVector<Passage> chapter;
+    check(bible.chapterVerses("genesis 1:2",chapter,error) && chapter.size()==3 && chapter[1].text=="Dos", "chapter list around selected verse");
+    check(bible.adjacent("Génesis 1:3",1,false,passage,error) && passage.reference==QStringLiteral("Génesis 2:1"), "next verse crosses chapter");
+    check(bible.adjacent("Génesis 2:1",-1,false,passage,error) && passage.reference==QStringLiteral("Génesis 1:3"), "previous verse crosses chapter");
+    check(bible.adjacent("Génesis 1:1-2",1,false,passage,error) && passage.text=="Tres", "next after range");
+    check(!bible.adjacent("Génesis 1:1",-1,false,passage,error), "stop at first chapter");
+    check(bible.adjacent("Génesis 1:2",1,true,passage,error) && passage.reference==QStringLiteral("Génesis 2"), "next chapter");
     check(!bible.load("{}", error), "reject missing fields");
     check(!bible.load(R"({"id":"t","name":"t","license":"CC0","books":{"Juan":{"1":{"1":10}}}})", error), "reject non-text verses");
     check(bible.lookup("1 Juan 2:1", passage, error), "failed import retains previous data");
