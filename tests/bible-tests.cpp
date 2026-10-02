@@ -1,0 +1,27 @@
+#include "bible.hpp"
+#include <QCoreApplication>
+#include <iostream>
+
+int main(int argc, char **argv)
+{
+    QCoreApplication app(argc, argv);
+    const QByteArray data = R"({"id":"test","name":"Test","license":"CC0","books":{"Génesis":{"1":{"1":"Uno","2":"Dos","3":"Tres"}},"1 Juan":{"2":{"1":"Cuatro"}}}})";
+    Bible bible; QString error; Passage passage; int failures = 0;
+    auto check = [&](bool ok, const char *label) { if (!ok) { std::cerr << label << '\n'; ++failures; } };
+    check(bible.load(data, error), "load valid data");
+    check(bible.lookup(QStringLiteral("genesis 1:1"), passage, error) && passage.text == "Uno", "accent insensitive lookup");
+    check(bible.lookup(QStringLiteral("Génesis 1:1-3"), passage, error) && passage.text == "1. Uno\n2. Dos\n3. Tres", "inclusive range");
+    check(bible.lookup("1 Juan 2:1", passage, error) && passage.text == "Cuatro", "numbered book");
+    check(bible.lookup(QStringLiteral("Génesis 1"), passage, error) && passage.reference == QStringLiteral("Génesis 1"), "whole chapter");
+    check(!bible.lookup("Génesis 1:3-1", passage, error), "reject reversed range");
+    check(!bible.lookup("Génesis 1:0", passage, error), "reject verse zero");
+    check(!bible.lookup("Génesis 1:1-4", passage, error), "reject missing verse");
+    check(!bible.lookup("Génesis 999:1", passage, error), "reject missing chapter");
+    check(!bible.lookup("Libro 1:1", passage, error), "reject missing book");
+    check(!bible.lookup("Génesis", passage, error), "reject incomplete reference");
+    check(!bible.lookup("Génesis 1:1-10000", passage, error), "reject oversized range");
+    check(!bible.load("{}", error), "reject missing fields");
+    check(!bible.load(R"({"id":"t","name":"t","license":"CC0","books":{"Juan":{"1":{"1":10}}}})", error), "reject non-text verses");
+    check(bible.lookup("1 Juan 2:1", passage, error), "failed import retains previous data");
+    return failures ? 1 : 0;
+}

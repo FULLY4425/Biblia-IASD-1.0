@@ -1,0 +1,270 @@
+Fuente: https://github.com/BibleAquifer/ReinaValera1909
+Licencia declarada: Dominio público / CC0
+Recuperado: 2026-10-02
+Conversión: títulos a libro/capítulo/versículo; se retiran etiquetas HTML y números sup, y se decodifica nbsp.
+[
+  {
+    "path": "spa/json/01.content.json",
+    "sha": "196eb3017b3786990858b1fed5f08bfa31e34757"
+  },
+  {
+    "path": "spa/json/02.content.json",
+    "sha": "6c84bb408ee110b119309364c4fbdc495f437dfb"
+  },
+  {
+    "path": "spa/json/03.content.json",
+    "sha": "4e4c542774066a4baa8f520ad58a6ae3c9ca8d37"
+  },
+  {
+    "path": "spa/json/04.content.json",
+    "sha": "aba60b32da8b8538f4a69dc592f3aeb29f8a9715"
+  },
+  {
+    "path": "spa/json/05.content.json",
+    "sha": "8c53b638ea377b52195d7e1d460a4df84e327c2c"
+  },
+  {
+    "path": "spa/json/06.content.json",
+    "sha": "20223f290b49bfa16ff440a62487128d7be7dec3"
+  },
+  {
+    "path": "spa/json/07.content.json",
+    "sha": "6c2a564a406f4c3e85a13433060d88cf73dfe533"
+  },
+  {
+    "path": "spa/json/08.content.json",
+    "sha": "821b732799d9584c006717c590a4fdc4f136aab8"
+  },
+  {
+    "path": "spa/json/09.content.json",
+    "sha": "d239064b5a70b51f3b67d72a9d18b9fbef303aaf"
+  },
+  {
+    "path": "spa/json/10.content.json",
+    "sha": "db82b04857895c4052d322ca07e544b8cd6eea6c"
+  },
+  {
+    "path": "spa/json/11.content.json",
+    "sha": "8f46525a1d3321eb23751c6fd6ecf498899e2953"
+  },
+  {
+    "path": "spa/json/12.content.json",
+    "sha": "d9c42a54f1543be7eef77da8acd20ccce97440f5"
+  },
+  {
+    "path": "spa/json/13.content.json",
+    "sha": "2e17c6e3cb455529caeaf8f91ab3fc135b69f6fe"
+  },
+  {
+    "path": "spa/json/14.content.json",
+    "sha": "04c84138cff5d3cf2e2c9fcfa3f0f375c31dbd2b"
+  },
+  {
+    "path": "spa/json/15.content.json",
+    "sha": "d79cf5a6a24b27e8efcadba9a051ac44cb296f93"
+  },
+  {
+    "path": "spa/json/16.content.json",
+    "sha": "3695e0b1d9eff4489c1aa2a342115c73f38bb8ad"
+  },
+  {
+    "path": "spa/json/17.content.json",
+    "sha": "9dab0bbb275d7da3cdc680ea58aff1299e01842e"
+  },
+  {
+    "path": "spa/json/18.content.json",
+    "sha": "f0fc32cd4daefc40593c8f754196f4fa69fd7e2f"
+  },
+  {
+    "path": "spa/json/19.content.json",
+    "sha": "b01cf50618c46ed79a01b60b287c852992cc4b52"
+  },
+  {
+    "path": "spa/json/20.content.json",
+    "sha": "09baa225d2fa7ec7848753560bf4c65cb2d12ae5"
+  },
+  {
+    "path": "spa/json/21.content.json",
+    "sha": "c914fadbd379d02ba34e39d011d67d8739bd0ca7"
+  },
+  {
+    "path": "spa/json/22.content.json",
+    "sha": "b5ae2df8809b9ffe99149ff62ac996f791f18cd6"
+  },
+  {
+    "path": "spa/json/23.content.json",
+    "sha": "3d7dd55092531aab5459e8851e547dedcd8cbc4a"
+  },
+  {
+    "path": "spa/json/24.content.json",
+    "sha": "79a6102d922e9955c9e4a0427f173431ad223ecc"
+  },
+  {
+    "path": "spa/json/25.content.json",
+    "sha": "c8acf2156072e313fa60df76e2b72546822dfac0"
+  },
+  {
+    "path": "spa/json/26.content.json",
+    "sha": "bd90fdc5842db14f74efa084f4ac7ebe45360e6d"
+  },
+  {
+    "path": "spa/json/27.content.json",
+    "sha": "1f3907fb6ed3a7102055761374eec230736ebb5f"
+  },
+  {
+    "path": "spa/json/28.content.json",
+    "sha": "bec236833ec4d7f3c93b12658543168149d5dff5"
+  },
+  {
+    "path": "spa/json/29.content.json",
+    "sha": "de038cb07ad57cb257687eb65f5867bf2810580c"
+  },
+  {
+    "path": "spa/json/30.content.json",
+    "sha": "ed9165b6a0368e033411511078f3261f3da1c727"
+  },
+  {
+    "path": "spa/json/31.content.json",
+    "sha": "f48e15a4040ae1d45fc3269a5f772586251ce92b"
+  },
+  {
+    "path": "spa/json/32.content.json",
+    "sha": "0a1bbdffe5132f0644b648a5ee86a4abce2da350"
+  },
+  {
+    "path": "spa/json/33.content.json",
+    "sha": "13fca861be42beb774355b5a09934f109c8979f4"
+  },
+  {
+    "path": "spa/json/34.content.json",
+    "sha": "a1498085c0bed457cf0e2065771e989e9c6bb681"
+  },
+  {
+    "path": "spa/json/35.content.json",
+    "sha": "0d0ced7259a2de0b415f4ba6484ede3f68ecb2b5"
+  },
+  {
+    "path": "spa/json/36.content.json",
+    "sha": "a925dac2ca9f310c0ffe834fffd909d8fa95802a"
+  },
+  {
+    "path": "spa/json/37.content.json",
+    "sha": "72870c098ea8df82ba09688fc24e2886d606c0a7"
+  },
+  {
+    "path": "spa/json/38.content.json",
+    "sha": "c8cd9fee0bbc14eb47595abb31ed60ddf3b13d85"
+  },
+  {
+    "path": "spa/json/39.content.json",
+    "sha": "98f1395a8ec90443f1a75d99120dd8f552a7df1c"
+  },
+  {
+    "path": "spa/json/40.content.json",
+    "sha": "28c9e6c1ec1620892218705efe5f615597b47943"
+  },
+  {
+    "path": "spa/json/41.content.json",
+    "sha": "44cb87f35dc753903b200cd475c21a5b94cfed97"
+  },
+  {
+    "path": "spa/json/42.content.json",
+    "sha": "5a8a6d616ed90516786282224e37a772dc6e5b44"
+  },
+  {
+    "path": "spa/json/43.content.json",
+    "sha": "383a0e478de3179113b57050e94152d5867cea7c"
+  },
+  {
+    "path": "spa/json/44.content.json",
+    "sha": "2a176ce9c97c3c8813ebe1c7b8fcab71928dd561"
+  },
+  {
+    "path": "spa/json/45.content.json",
+    "sha": "5a62514b0ea49af3b1671c011d43da6afa42824d"
+  },
+  {
+    "path": "spa/json/46.content.json",
+    "sha": "24581e9d8996c481dbb6d58dfb7dc72d25a78793"
+  },
+  {
+    "path": "spa/json/47.content.json",
+    "sha": "03de523f5541bc3acccab12bb7b32c262a5f24e2"
+  },
+  {
+    "path": "spa/json/48.content.json",
+    "sha": "5059087c8e155bb17efb0f7f7c3294ccea34f444"
+  },
+  {
+    "path": "spa/json/49.content.json",
+    "sha": "28e64595bc4f37e7ded2b5157fb3d9e343ccfe48"
+  },
+  {
+    "path": "spa/json/50.content.json",
+    "sha": "7cbe2f7d1f660c8aa3e63c535db1ed169aabf3ff"
+  },
+  {
+    "path": "spa/json/51.content.json",
+    "sha": "e2810a47d510e78b6ed5e893b2f7513c7952549e"
+  },
+  {
+    "path": "spa/json/52.content.json",
+    "sha": "623b38939d1185105fee73a7ff010486960c26bc"
+  },
+  {
+    "path": "spa/json/53.content.json",
+    "sha": "409ca4cf7dac937426fd3b7a1ac92ec459d51bb7"
+  },
+  {
+    "path": "spa/json/54.content.json",
+    "sha": "a44d8fd4164d9e65d813dfea8e8c3b002297a648"
+  },
+  {
+    "path": "spa/json/55.content.json",
+    "sha": "c20fcd0b682e95cdbd8ccb9ffa83a0ad2c6d2297"
+  },
+  {
+    "path": "spa/json/56.content.json",
+    "sha": "ac58fc46bbba08e5acf99e4272b9f5da066269d7"
+  },
+  {
+    "path": "spa/json/57.content.json",
+    "sha": "0087fcb5fb31ac62835a6c3748b8b2d9d85b7f97"
+  },
+  {
+    "path": "spa/json/58.content.json",
+    "sha": "aaf5a70a8a0233a70f99f83f4aa70f27cfecf300"
+  },
+  {
+    "path": "spa/json/59.content.json",
+    "sha": "b2517b62142837e9338e498df1b8776729bbcdf5"
+  },
+  {
+    "path": "spa/json/60.content.json",
+    "sha": "c23d1b2c01c1d4891208a65cdfe7084a91044580"
+  },
+  {
+    "path": "spa/json/61.content.json",
+    "sha": "285e0d8e7154f5b901c76d4289fd9139a0dbb88a"
+  },
+  {
+    "path": "spa/json/62.content.json",
+    "sha": "b22f329bd7e0ab3bcd8d66573a49fb59e454d632"
+  },
+  {
+    "path": "spa/json/63.content.json",
+    "sha": "8272c180a40421b19cb7a38989a325fdfaf0bb17"
+  },
+  {
+    "path": "spa/json/64.content.json",
+    "sha": "4ff2f7007606f56722ebf8f3e6444e7ad7e344da"
+  },
+  {
+    "path": "spa/json/65.content.json",
+    "sha": "a3f6e01193b486af1d1c9e72706e6b65e6dcb620"
+  },
+  {
+    "path": "spa/json/66.content.json",
+    "sha": "d956bb661d0e28cbbdc845101f592bd548038570"
+  }
+]
